@@ -1,0 +1,22 @@
+{
+  "dependencies": {
+    "@types/screeps": "^3.3.0",
+    "source-map": "^0.6.1"
+  },
+  "devDependencies": {
+    "rollup": "^3.10.1",
+    "rollup-plugin-typescript2": "^0.34.1",
+    "typescript": "^4.9.4"
+  },
+  "name": "newworld",
+  "description": "1.自动补全\r 首先下载nodejs\r 使用vscode打开文件夹\r ctrl + shift + ~\r 执行 npm install @types/screeps\r 如果想要在screeps中使用lodash库 则执行 npm install @types/lodash@3.10.1\r 2.rollup\r 执行 npm install -D rollup\r 在 package.json 中的 scripts 里添加一个build字段：\r \"build\": \"rollup -cw\",",
+  "version": "1.0.0",
+  "main": "main.js",
+  "scripts": {
+    "build": "rollup -cw",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
