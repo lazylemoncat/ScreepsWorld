@@ -1,3 +1,0 @@
-interface SpawnMemory {
-  spawning: boolean,
-}
