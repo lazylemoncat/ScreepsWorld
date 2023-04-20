@@ -1,16 +1,16 @@
 import typescript from 'rollup-plugin-typescript2';
 
 export default {
-// å‘Šè¯‰ rollup ä»–è¦æ‰“åŒ…ä»€ä¹ˆ
-  // æºä»£ç çš„å…¥å£æ˜¯å“ªä¸ªæ–‡ä»¶
+// ¸æËß rollup ËûÒª´ò°üÊ²Ã´
+  // Ô´´úÂëµÄÈë¿ÚÊÇÄÄ¸öÎÄ¼ş
   input: 'src/main.ts',
   plugins: [
-    // ç¼–è¾‘ts
+    // ±à¼­ts
     typescript({tsconfig: "./tsconfig.json"}),
   ],
-  // æ„å»ºäº§ç‰©é…ç½®
+  // ¹¹½¨²úÎïÅäÖÃ
   output: {
-      // è¾“å‡ºåˆ°å“ªä¸ªæ–‡ä»¶
+      // Êä³öµ½ÄÄ¸öÎÄ¼ş
       file: 'dist/main.js',
       format: 'cjs',
   }
