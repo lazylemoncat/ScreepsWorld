@@ -19,6 +19,10 @@ export const Tower = {
     if (enemy[0] == undefined) {
       return;
     }
+    enemy = _.filter(enemy, i => i.pos.findInRange(FIND_EXIT, 2).length == 0);
+    if (enemy[0] == undefined) {
+      return;
+    }
     for (let i = 0; i < towers.length; ++i) {
       let tower = towers[i];
       tower.attack(enemy[0]);

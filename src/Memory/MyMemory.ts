@@ -1,5 +1,6 @@
 export const MyMemory = {
   run: function (): void {
+    this.reset();
     this.deleteDead();
     return;
   },
@@ -21,7 +22,11 @@ export const MyMemory = {
    * @returns true | false
    */
   upateWorking: function (creep: Creep, resource: ResourceConstant): boolean {
-    if(creep.memory.working && creep.store[RESOURCE_ENERGY] == 0) {
+    let resouceType = Object.keys(creep.store)[0]as ResourceConstant;
+    if (resouceType == undefined) {
+      resouceType = "energy";
+    }
+    if(creep.memory.working && creep.store[resouceType] == 0) {
       creep.memory.working = false;
       return false;
     } else if(!creep.memory.working 
@@ -34,6 +39,11 @@ export const MyMemory = {
     } else {
       return false;
     }
-    return false;
+  },
+  reset: function(): void {
+    if (Memory.bornRoom in Game.rooms) {
+      return;
+    }
+    Memory.bornRoom = Game.spawns["Spawn1"].room.name;
   },
 }

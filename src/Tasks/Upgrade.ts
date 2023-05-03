@@ -24,9 +24,9 @@ export const Upgrade = {
     return;
   },
   returnBodys: function (room: Room) {
-    let energy = room.energyAvailable;
+    let energy = room.energyCapacityAvailable;
     let bodys = [WORK, WORK, CARRY, MOVE];
-    if (energy < 300) {
+    if (energy <= 300) {
       bodys = [WORK, CARRY, MOVE];
       return bodys;
     }

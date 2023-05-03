@@ -4,12 +4,15 @@ import { SpawnCreep } from "./SpawnCreep";
 export const Build = {
   run: function (room: Room) {
     let sites = room.find(FIND_CONSTRUCTION_SITES);
-    if (sites.length == 0) {
-      return 0;
-    }
     let builders = _.filter(Game.creeps, (creep) => creep.memory.role 
       == "builder");
-    if (builders.length < 2) {
+    if (sites.length == 0) {
+      for (let i = 0; i < builders.length; ++i) {
+        Builder.goRecycle(builders[i], room);
+      }
+      return 0;
+    }
+    if (builders.length < 1) {
       let newListPush = {
         role: "builder",
         bodys: this.returnBodys(room),
@@ -20,7 +23,7 @@ export const Build = {
       return;
     }
     for (let i = 0; i < builders.length; ++i) {
-      Builder.run(sites[0], builders[i], room);
+      Builder.run(builders[i], room);
     }
     return;
   },

@@ -4,22 +4,49 @@ export const Withdraw = {
    * @param creep 
    * @param room 
    */
-  energy: function(creep: Creep, room : Room): boolean {
-    let energy = creep.store.getFreeCapacity();
-    if (energy == 0) {
-      return true;
+  energy: function(creep: Creep, room : Room) {
+    let amount = creep.store.getFreeCapacity();
+    let containers = _.filter(room.find(FIND_STRUCTURES), (i) =>
+      i.structureType == "container"
+      && i.store["energy"] >= amount
+      && i.pos.findInRange(FIND_SOURCES, 2)[0] != undefined) as 
+      StructureContainer[];
+    let links = _.filter(room.find(FIND_STRUCTURES), (i) =>
+      i.structureType == "link"
+      && i.store.energy >= amount
+      && i.pos.findInRange(FIND_SOURCES, 2).length == 0) as 
+      StructureLink[];
+    let storage = room.storage;
+
+    let targets: (StructureTerminal | StructureContainer 
+      | StructureStorage | StructureLink)[] = [...containers,...links];
+    if (storage != undefined) {
+      if (storage.store["energy"] >= amount) {
+        targets.push(storage);
+      }
     }
-    let targets = _.filter(room.find(FIND_STRUCTURES), i => 
-      "store" in i 
-      && i.store["energy"] >= energy) as AnyStoreStructure[];
+    if (room.terminal != undefined) {
+      if (room.terminal.store["energy"] >= 100000) {
+        targets.push(room.terminal);
+      }
+    }
     let target = creep.pos.findClosestByRange(targets);
-    if (target == undefined) {
-      return false;
+    if (target != undefined) {
+      target as (StructureStorage | StructureContainer 
+        | Resource<ResourceConstant> | Tombstone);
+    } else {
+      return;
     }
-    if (creep.withdraw(target, "energy") == ERR_NOT_IN_RANGE) {
-      creep.moveTo(target);
-      return false;
+    if (target instanceof Resource) {
+      if (creep.pickup(target) == ERR_NOT_IN_RANGE) {
+        creep.moveTo(target);
+      }
+      return;
+    } else {
+      if (creep.withdraw(target, "energy") == ERR_NOT_IN_RANGE) {
+        creep.moveTo(target);
+      }
     }
-    return true;
+    return;
   }
 }

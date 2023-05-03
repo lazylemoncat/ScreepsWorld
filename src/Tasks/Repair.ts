@@ -1,8 +1,23 @@
+import { Repairer } from "./Roles/Repairer";
 import { SpawnCreep } from "./SpawnCreep";
 import { Tower } from "./Structures/Tower";
 
 export const Repair = {
   run: function (room: Room) {
+    let towers = _.filter(room.find(FIND_STRUCTURES), (i) =>
+      i.structureType == "tower") as StructureTower[];
+    if (towers.length > 0) {
+      let structures = room.find(FIND_STRUCTURES).filter(
+         i => i.hits < i.hitsMax && i.structureType != STRUCTURE_WALL);
+      structures.sort((a,b) => a.hits - b.hits);
+      if (structures[0] == undefined) {
+        return;
+      }
+      for (let i = 0; i < structures.length; ++i) {
+        Tower.repair(structures[i], room);
+      }
+      return;
+    }
     let repairers = _.filter(Game.creeps, (creep) => creep.memory.role 
       == "repairer" && creep.pos.roomName == room.name);
     if (repairers.length < 1) {
@@ -15,16 +30,9 @@ export const Repair = {
     if (repairers.length == 0) {
       return;
     }
-    let structures = room.find(FIND_STRUCTURES).filter(
-      i => i.structureType != STRUCTURE_WALL);
-    let targets = structures.filter(i => i.hits < i.hitsMax);
-      targets.sort((a,b) => a.hits - b.hits);
-    if (targets[0] == undefined) {
-      return;
-    }
-    for (let i = 0; i < targets.length; ++i) {
-      Tower.repair(targets[i], room);
-    }
+    
+    Repairer.run(room);
+    return;
   },
   returnBodys: function (room: Room) {
     let energy = room.energyAvailable;
@@ -32,9 +40,9 @@ export const Repair = {
     if (energy < 300) {
       return bodys;
     }
-    const consume = 150;
-    let times = (energy - consume) / 150;
-    for (let i = 1; i < times; ++i) {
+    const consume = 200;
+    let times = (energy - consume) / 200;
+    for (let i = 1; i < Math.trunc(times); ++i) {
       bodys.push(WORK, CARRY, MOVE);
     }
     return bodys;

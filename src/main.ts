@@ -1,22 +1,23 @@
-import { Market } from "./Market/Market";
+import "./Global/Market";
+import "./Global/Tasks";
 import { MyMemory } from "./Memory/MyMemory";
-import { Roles } from "./Tasks/Roles/Roles";
 import { RoomMaintain } from "./Tasks/RoomMaintain";
 import { SpawnCreep } from "./Tasks/SpawnCreep";
 
-import "./global/gloal";
-
 export const loop = function () {
-  // 运行市场的买卖
-  Market.run();
+  // 运行市场的自动买卖
+  global.Market.run();
   // 运行内存的管理
   MyMemory.run();
   // 运营每一个房间
   RoomMaintain.run();
   for (let roomName in Game.rooms) {
     let room = Game.rooms[roomName];
+    if (room.controller == undefined ||  room.controller.my == false) {
+      continue;
+    }
+    // 生产 creep
     SpawnCreep.newCreep(room);
-    Roles.run(room);
   }
   return;
 }
