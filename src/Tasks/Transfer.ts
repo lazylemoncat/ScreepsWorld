@@ -1,9 +1,9 @@
-import { MyMemory } from "@/Memory/MyMemory";
-import { SpawnCreep } from "./SpawnCreep";
-import { Carrier } from "./Roles/Carrier";
-import { Link } from "./Structures/Links";
-import { MineralCarrier } from "./Roles/MineralCarrier";
-import { Spawns } from "./Structures/Spawns";
+import { MyMemory } from "@/memory/myMemory";
+import { SpawnCreep } from "./spawnCreep";
+import { Carrier } from "./roles/carrier";
+import { Link } from "../structures/links";
+import { MineralCarrier } from "./roles/mineralCarrier";
+import { Spawns } from "../structures/spawns";
 
 export const Transfer = {
   run: function (room: Room, costs: CostMatrix) {
@@ -14,13 +14,16 @@ export const Transfer = {
       this.newCarrier(room);
     }
     let transferTargets = _.filter(room.find(FIND_STRUCTURES), (i) => 
-      "store" in i 
-      && i.store["energy"] < i.store.getCapacity("energy") && (
-      i.structureType == "spawn" || (i.structureType == "extension" 
-      && i.pos.findInRange(FIND_SOURCES, 2).length == 0)
-      || i.structureType == "tower"
-      || (i.structureType == "terminal" && i.store["energy"] < 50000)
-      || i.structureType == "lab"
+        "store" in i 
+        && i.store["energy"] < i.store.getCapacity("energy") && (
+        i.structureType == "spawn" || (i.structureType == "extension" 
+        && i.pos.findInRange(FIND_SOURCES, 2).length == 0)
+        || i.structureType == "tower"
+        || (i.structureType == "terminal" && i.store["energy"] < 50000)
+        || i.structureType == "lab"
+        || (i.structureType == "container" 
+        && i.pos.findInRange(FIND_SOURCES, 2).length == 0
+        && i.pos.findInRange(FIND_MINERALS, 1).length == 0)
       )
     ) as AnyStoreStructure[];
     if (transferTargets.length == 0) {

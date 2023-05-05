@@ -1,7 +1,12 @@
-import { SpawnCreep } from "../SpawnCreep";
+import { SpawnCreep } from "../spawnCreep";
 
 export const MineralCarrier = {
   run: function (room: Room) {
+    let extractor = _.find(room.find(FIND_STRUCTURES), i => 
+                          i.structureType == "extractor");
+    if (extractor == undefined) {
+      return;
+    }
     let creep = _.filter(room.find(FIND_MY_CREEPS), i => 
       i.memory.role == "mineralCarrier")[0];
     if (creep == undefined) {

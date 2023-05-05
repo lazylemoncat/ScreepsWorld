@@ -1,4 +1,4 @@
-declare var global: {
+declare let global: {
   Market: {
     // 自动获得 pixel，以及完成未完成的订单任务
     run: () => void,

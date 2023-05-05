@@ -1,12 +1,12 @@
-import { Build } from "./Build";
-import { Defend } from "./Defend";
-import { FastUpgrade } from "./FastUpgrade";
-import { Harvest } from "./Harvest";
-import { Repair } from "./Repair"
-import { Labs } from "./Structures/Labs";
-import { Transfer } from "./Transfer";
-import { Upgrade } from "./Upgrade";
-import { roomVisual } from "@/Visual/roomVisual";
+import { Build } from "./build";
+import { Defend } from "./defend";
+import { FastUpgrade } from "./fastUpgrade";
+import { Harvest } from "./harvest";
+import { Labs } from "../structures/labs"
+import { Transfer } from "./transfer";
+import { Upgrade } from "./upgrade";
+import { RoomVisual } from "@/visual/roomVisual";
+import { Repair } from "./repair";
 
 export const RoomMaintain = {
   run: function () {
@@ -24,7 +24,7 @@ export const RoomMaintain = {
         Defend.run(room);
         return;
       }
-      roomVisual.run(roomName);
+      RoomVisual.run(roomName);
       let costs = this.roomCallBack(room);
       Harvest.run(room);
       Transfer.run(room, costs);
@@ -33,7 +33,7 @@ export const RoomMaintain = {
       } else {
         Upgrade.run(room);
       }
-      Repair.run(room);
+      Repair.run(room)
       Labs.runReaction(room);
       Defend.run(room);
     }

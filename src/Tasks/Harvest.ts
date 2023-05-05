@@ -1,7 +1,6 @@
-import { min } from "lodash";
-import { Harvester } from "./Roles/Harvester";
-import { Mineraler } from "./Roles/Mineraler";
-import { SpawnCreep } from "./SpawnCreep";
+import { Harvester } from "./roles/harvester";
+import { Mineraler } from "./roles/mineraler";
+import { SpawnCreep } from "./spawnCreep";
 
 export const Harvest = {
   run: function (room: Room) {
@@ -36,7 +35,7 @@ export const Harvest = {
         Harvester.run(sources[i], room, harvester);
       }
     }
-    let extractor = _.filter(room.find(FIND_STRUCTURES), i => 
+    let extractor = _.find(room.find(FIND_STRUCTURES), i => 
       i.structureType == "extractor");
     if (extractor == undefined) {
       return;

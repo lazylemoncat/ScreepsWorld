@@ -1,5 +1,5 @@
-import { MyMemory } from "@/Memory/MyMemory";
-import { Withdraw } from "../Withdraw";
+import { MyMemory } from "@/memory/myMemory";
+import { Withdraw } from "../withdraw";
 
 export const Upgrader = {
   run: function (upgrader: Creep, room: Room) {

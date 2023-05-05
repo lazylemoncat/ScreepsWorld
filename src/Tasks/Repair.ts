@@ -1,6 +1,7 @@
-import { Repairer } from "./Roles/Repairer";
-import { SpawnCreep } from "./SpawnCreep";
-import { Tower } from "./Structures/Tower";
+
+import { SpawnCreep } from "./spawnCreep";
+import { Tower } from "../structures/tower";
+import { waller } from "./roles/waller";
 
 export const Repair = {
   run: function (room: Room) {
@@ -8,30 +9,29 @@ export const Repair = {
       i.structureType == "tower") as StructureTower[];
     if (towers.length > 0) {
       let structures = room.find(FIND_STRUCTURES).filter(
-         i => i.hits < i.hitsMax && i.structureType != STRUCTURE_WALL);
+        i => i.hits < i.hitsMax && i.structureType != STRUCTURE_WALL);
       structures.sort((a,b) => a.hits - b.hits);
       if (structures[0] == undefined) {
         return;
       }
-      for (let i = 0; i < structures.length; ++i) {
+      for (let i = 0; i < structures.length && i < towers.length; ++i) {
         Tower.repair(structures[i], room);
       }
-      return;
     }
-    let repairers = _.filter(Game.creeps, (creep) => creep.memory.role 
-      == "repairer" && creep.pos.roomName == room.name);
-    if (repairers.length < 1) {
+    let wallers = _.filter(Game.creeps, (creep) => creep.memory.role 
+      == "waller" && creep.pos.roomName == room.name);
+    if (wallers.length < 1) {
       let newListPush = {
-        role: "repairer",
+        role: "waller",
         bodys: this.returnBodys(room),
       };
       SpawnCreep.newList.push(newListPush);
     }
-    if (repairers.length == 0) {
+    if (wallers.length == 0) {
       return;
     }
     
-    Repairer.run(room);
+    waller.run(room);
     return;
   },
   returnBodys: function (room: Room) {
@@ -42,7 +42,7 @@ export const Repair = {
     }
     const consume = 200;
     let times = (energy - consume) / 200;
-    for (let i = 1; i < Math.trunc(times); ++i) {
+    for (let i = 0; i < Math.trunc(times); ++i) {
       bodys.push(WORK, CARRY, MOVE);
     }
     return bodys;

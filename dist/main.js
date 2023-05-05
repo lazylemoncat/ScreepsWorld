@@ -199,8 +199,7 @@ const Withdraw = {
     energy: function (creep, room) {
         let amount = creep.store.getFreeCapacity();
         let containers = _.filter(room.find(FIND_STRUCTURES), (i) => i.structureType == "container"
-            && i.store["energy"] >= amount
-            && i.pos.findInRange(FIND_SOURCES, 2)[0] != undefined);
+            && i.store["energy"] >= amount);
         let links = _.filter(room.find(FIND_STRUCTURES), (i) => i.structureType == "link"
             && i.store.energy >= amount
             && i.pos.findInRange(FIND_SOURCES, 2).length == 0);
@@ -366,6 +365,12 @@ const Tower = {
         let towers = _.filter(room.find(FIND_STRUCTURES), (i) => i.structureType == "tower");
         let enemy = room.find(FIND_HOSTILE_CREEPS);
         if (enemy[0] != undefined) {
+            return;
+        }
+        let rampart = _.filter(room.find(FIND_STRUCTURES), i => i.structureType == "rampart" && i.hits < 1000);
+        if (rampart.length != 0) {
+            let tower = towers[0];
+            tower.repair(target);
             return;
         }
         for (let i = 0; i < towers.length; ++i) {
@@ -711,7 +716,7 @@ const Harvest = {
                 Harvester.run(sources[i], room, harvester);
             }
         }
-        let extractor = _.filter(room.find(FIND_STRUCTURES), i => i.structureType == "extractor");
+        let extractor = _.find(room.find(FIND_STRUCTURES), i => i.structureType == "extractor");
         if (extractor == undefined) {
             return;
         }
@@ -758,95 +763,6 @@ const Harvest = {
     },
 };
 
-const Repairer = {
-    run: function (room) {
-        let repairers = _.filter(Game.creeps, (creep) => creep.memory.role
-            == "repairer");
-        for (let i = 0; i < repairers.length; ++i) {
-            let repairer = repairers[i];
-            if (MyMemory.upateWorking(repairer, "energy")) {
-                this.goRepair(repairer, room);
-            }
-            else {
-                Withdraw.energy(repairer, room);
-            }
-        }
-        return;
-    },
-    goRepair: function (creep, room) {
-        if (creep.memory.repairTarget != undefined) {
-            let target = Game.getObjectById(creep.memory.repairTarget);
-            if (target == undefined) {
-                creep.memory.repairTarget = undefined;
-            }
-            else if (target.hits == target.hitsMax) {
-                creep.memory.repairTarget = undefined;
-            }
-            else {
-                if (creep.repair(target) == ERR_NOT_IN_RANGE) {
-                    creep.moveTo(target);
-                }
-                return;
-            }
-        }
-        let structures = room.find(FIND_STRUCTURES).filter(i => i.structureType != STRUCTURE_WALL);
-        let targets = structures.filter(i => i.hits < i.hitsMax);
-        targets.sort((a, b) => a.hits - b.hits);
-        if (targets[0] == undefined) {
-            return;
-        }
-        creep.memory.repairTarget = targets[0].id;
-        if (creep.repair(targets[0]) == ERR_NOT_IN_RANGE) {
-            creep.moveTo(targets[0]);
-        }
-        return;
-    }
-};
-
-const Repair = {
-    run: function (room) {
-        let towers = _.filter(room.find(FIND_STRUCTURES), (i) => i.structureType == "tower");
-        if (towers.length > 0) {
-            let structures = room.find(FIND_STRUCTURES).filter(i => i.hits < i.hitsMax && i.structureType != STRUCTURE_WALL);
-            structures.sort((a, b) => a.hits - b.hits);
-            if (structures[0] == undefined) {
-                return;
-            }
-            for (let i = 0; i < structures.length; ++i) {
-                Tower.repair(structures[i], room);
-            }
-            return;
-        }
-        let repairers = _.filter(Game.creeps, (creep) => creep.memory.role
-            == "repairer" && creep.pos.roomName == room.name);
-        if (repairers.length < 1) {
-            let newListPush = {
-                role: "repairer",
-                bodys: this.returnBodys(room),
-            };
-            SpawnCreep.newList.push(newListPush);
-        }
-        if (repairers.length == 0) {
-            return;
-        }
-        Repairer.run(room);
-        return;
-    },
-    returnBodys: function (room) {
-        let energy = room.energyAvailable;
-        let bodys = [WORK, CARRY, MOVE];
-        if (energy < 300) {
-            return bodys;
-        }
-        const consume = 200;
-        let times = (energy - consume) / 200;
-        for (let i = 1; i < Math.trunc(times); ++i) {
-            bodys.push(WORK, CARRY, MOVE);
-        }
-        return bodys;
-    },
-};
-
 const Labs = {
     runReaction: function (room) {
         let labs = _.filter(room.find(FIND_STRUCTURES), i => i.structureType == "lab");
@@ -869,25 +785,13 @@ const Carrier = {
             }
             if (creep.transfer(room.storage, resouceType)
                 == ERR_NOT_IN_RANGE) {
-                creep.moveTo(room.storage, {
-                    plainCost: 2,
-                    swampCost: 10,
-                    costCallback: function (roomName, CostMatrix) {
-                        return costs;
-                    }
-                });
+                creep.moveTo(room.storage);
                 return false;
             }
         }
         if (transfered || creep.transfer(target, resouceType)
             == ERR_NOT_IN_RANGE) {
-            creep.moveTo(target, {
-                plainCost: 2,
-                swampCost: 10,
-                costCallback: function (roomName, CostMatrix) {
-                    return costs;
-                },
-            });
+            creep.moveTo(target);
             return false;
         }
         if (target.store.getFreeCapacity("energy") >= creep.store[resouceType]) {
@@ -928,23 +832,13 @@ const Carrier = {
         }
         if (target instanceof Resource) {
             if (creep.pickup(target) == ERR_NOT_IN_RANGE) {
-                creep.moveTo(target, {
-                    plainCost: 2,
-                    swampCost: 10,
-                    costCallback: function (roomName, CostMatrix) {
-                        return costs;
-                    }
-                });
+                creep.moveTo(target);
             }
             return;
         }
         else {
             if (creep.withdraw(target, "energy") == ERR_NOT_IN_RANGE) {
-                creep.moveTo(target, {
-                    costCallback: function (roomName, CostMatrix) {
-                        return costs;
-                    }
-                });
+                creep.moveTo(target);
             }
         }
         return;
@@ -971,6 +865,10 @@ const Link = {
 const MineralCarrier = {
     run: function (room) {
         var _a;
+        let extractor = _.find(room.find(FIND_STRUCTURES), i => i.structureType == "extractor");
+        if (extractor == undefined) {
+            return;
+        }
         let creep = _.filter(room.find(FIND_MY_CREEPS), i => i.memory.role == "mineralCarrier")[0];
         if (creep == undefined) {
             let newListPush = {
@@ -1169,7 +1067,10 @@ const Transfer = {
             && i.pos.findInRange(FIND_SOURCES, 2).length == 0)
             || i.structureType == "tower"
             || (i.structureType == "terminal" && i.store["energy"] < 50000)
-            || i.structureType == "lab"));
+            || i.structureType == "lab"
+            || (i.structureType == "container"
+                && i.pos.findInRange(FIND_SOURCES, 2).length == 0
+                && i.pos.findInRange(FIND_MINERALS, 1).length == 0)));
         if (transferTargets.length == 0) {
             if (room.storage != undefined) {
                 transferTargets.push(room.storage);
@@ -1299,21 +1200,20 @@ const Upgrade = {
     },
     returnBodys: function (room) {
         let energy = room.energyCapacityAvailable;
-        let bodys = [WORK, WORK, CARRY, MOVE];
+        let bodys = [WORK, CARRY, MOVE];
         if (energy <= 300) {
-            bodys = [WORK, CARRY, MOVE];
             return bodys;
         }
-        const consume = 300;
-        let times = (energy - consume) / 250;
-        for (let i = 1; i < times; ++i) {
-            bodys.push(WORK, WORK, MOVE);
+        const consume = 200;
+        let times = (energy - consume) / 200;
+        for (let i = 0; i < times; ++i) {
+            bodys.push(WORK, CARRY, MOVE);
         }
         return bodys;
     },
 };
 
-const roomVisual = {
+const RoomVisual = {
     run: function (roomName) {
         this.upgrade(roomName);
         this.spawnCreep(roomName);
@@ -1340,6 +1240,9 @@ const roomVisual = {
     spawnCreep: function (roomName) {
         let room = Game.rooms[roomName];
         let spawns = room.find(FIND_MY_SPAWNS);
+        if (spawns.length == 0) {
+            return;
+        }
         for (let i = 0; i < spawns.length; ++i) {
             let pos = spawns[i].pos;
             let spawning = spawns[i].spawning;
@@ -1351,6 +1254,95 @@ const roomVisual = {
             }
         }
         return;
+    },
+};
+
+const waller = {
+    run: function (room) {
+        let wallers = _.filter(Game.creeps, (creep) => creep.memory.role
+            == "waller");
+        for (let i = 0; i < wallers.length; ++i) {
+            let waller = wallers[i];
+            if (MyMemory.upateWorking(waller, "energy")) {
+                this.goRepair(waller, room);
+            }
+            else {
+                Withdraw.energy(waller, room);
+            }
+        }
+        return;
+    },
+    goRepair: function (creep, room) {
+        if (creep.memory.repairTarget != undefined) {
+            let target = Game.getObjectById(creep.memory.repairTarget);
+            if (target == undefined) {
+                creep.memory.repairTarget = undefined;
+            }
+            else if (target.hits == target.hitsMax) {
+                creep.memory.repairTarget = undefined;
+            }
+            else {
+                if (creep.repair(target) == ERR_NOT_IN_RANGE) {
+                    creep.moveTo(target);
+                }
+                return;
+            }
+        }
+        let structures = room.find(FIND_STRUCTURES).filter(i => i.structureType == "constructedWall"
+            || i.structureType == "rampart");
+        let targets = structures.filter(i => i.hits < i.hitsMax);
+        targets.sort((a, b) => a.hits - b.hits);
+        if (targets[0] == undefined) {
+            return;
+        }
+        creep.memory.repairTarget = targets[0].id;
+        if (creep.repair(targets[0]) == ERR_NOT_IN_RANGE) {
+            creep.moveTo(targets[0]);
+        }
+        return;
+    }
+};
+
+const Repair = {
+    run: function (room) {
+        let towers = _.filter(room.find(FIND_STRUCTURES), (i) => i.structureType == "tower");
+        if (towers.length > 0) {
+            let structures = room.find(FIND_STRUCTURES).filter(i => i.hits < i.hitsMax && i.structureType != STRUCTURE_WALL);
+            structures.sort((a, b) => a.hits - b.hits);
+            if (structures[0] == undefined) {
+                return;
+            }
+            for (let i = 0; i < structures.length && i < towers.length; ++i) {
+                Tower.repair(structures[i], room);
+            }
+        }
+        let wallers = _.filter(Game.creeps, (creep) => creep.memory.role
+            == "waller" && creep.pos.roomName == room.name);
+        if (wallers.length < 1) {
+            let newListPush = {
+                role: "waller",
+                bodys: this.returnBodys(room),
+            };
+            SpawnCreep.newList.push(newListPush);
+        }
+        if (wallers.length == 0) {
+            return;
+        }
+        waller.run(room);
+        return;
+    },
+    returnBodys: function (room) {
+        let energy = room.energyAvailable;
+        let bodys = [WORK, CARRY, MOVE];
+        if (energy < 300) {
+            return bodys;
+        }
+        const consume = 200;
+        let times = (energy - consume) / 200;
+        for (let i = 0; i < Math.trunc(times); ++i) {
+            bodys.push(WORK, CARRY, MOVE);
+        }
+        return bodys;
     },
 };
 
@@ -1370,7 +1362,7 @@ const RoomMaintain = {
                 Defend.run(room);
                 return;
             }
-            roomVisual.run(roomName);
+            RoomVisual.run(roomName);
             let costs = this.roomCallBack(room);
             Harvest.run(room);
             Transfer.run(room, costs);
@@ -1417,6 +1409,10 @@ const RoomMaintain = {
     },
 };
 
+/**
+ * 每 tick 都执行的动作
+ * @returns {void}
+ */
 const loop = function () {
     // 运行市场的自动买卖
     global.Market.run();

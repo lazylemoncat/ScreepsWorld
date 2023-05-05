@@ -9,26 +9,14 @@ export const Carrier = {
       }
       if (creep.transfer(room.storage, resouceType) 
         == ERR_NOT_IN_RANGE) {
-        creep.moveTo(room.storage, {
-          plainCost: 2,
-          swampCost: 10,
-          costCallback: function(roomName, CostMatrix) {
-            return costs;
-          }
-        });
+        creep.moveTo(room.storage);
         
         return false;
       }
     }
     if (transfered || creep.transfer(target, resouceType) 
       == ERR_NOT_IN_RANGE) {
-      creep.moveTo(target, {
-        plainCost: 2,
-        swampCost: 10,
-        costCallback: function(roomName, CostMatrix) {
-          return costs;
-        },
-      });
+      creep.moveTo(target);
       return false;
     }
     if (target.store.getFreeCapacity("energy") >= creep.store[resouceType]) {
@@ -81,22 +69,12 @@ export const Carrier = {
     }
     if (target instanceof Resource) {
       if (creep.pickup(target) == ERR_NOT_IN_RANGE) {
-        creep.moveTo(target, {
-          plainCost: 2,
-          swampCost: 10,
-          costCallback: function(roomName, CostMatrix) {
-            return costs;
-          }
-        });
+        creep.moveTo(target);
       }
       return;
     } else {
       if (creep.withdraw(target, "energy") == ERR_NOT_IN_RANGE) {
-        creep.moveTo(target, {
-          costCallback: function(roomName, CostMatrix) {
-            return costs;
-          }
-        });
+        creep.moveTo(target);
       }
     }
     return;

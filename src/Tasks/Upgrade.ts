@@ -1,5 +1,5 @@
-import { Upgrader } from "./Roles/Upgrader";
-import { SpawnCreep } from "./SpawnCreep";
+import { Upgrader } from "./roles/upgrader";
+import { SpawnCreep } from "./spawnCreep";
 
 export const Upgrade = {
   run: function (room: Room, upgradersNum?: number) {
@@ -25,15 +25,14 @@ export const Upgrade = {
   },
   returnBodys: function (room: Room) {
     let energy = room.energyCapacityAvailable;
-    let bodys = [WORK, WORK, CARRY, MOVE];
+    let bodys = [WORK, CARRY, MOVE];
     if (energy <= 300) {
-      bodys = [WORK, CARRY, MOVE];
       return bodys;
     }
-    const consume = 300;
-    let times = (energy - consume) / 250;
-    for (let i = 1; i < times; ++i) {
-      bodys.push(WORK, WORK, MOVE);
+    const consume = 200;
+    let times = (energy - consume) / 200;
+    for (let i = 0; i < times; ++i) {
+      bodys.push(WORK, CARRY, MOVE);
     }
     return bodys;
   },

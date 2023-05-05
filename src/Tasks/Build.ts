@@ -1,5 +1,5 @@
-import { Builder } from "./Roles/Builder";
-import { SpawnCreep } from "./SpawnCreep";
+import { Builder } from "./roles/builder";
+import { SpawnCreep } from "./spawnCreep";
 
 export const Build = {
   run: function (room: Room) {

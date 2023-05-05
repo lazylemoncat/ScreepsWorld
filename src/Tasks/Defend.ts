@@ -1,4 +1,4 @@
-import { Tower } from "./Structures/Tower";
+import { Tower } from "../structures/tower";
 
 export const Defend = {
   run: function (room: Room) {

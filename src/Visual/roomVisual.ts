@@ -1,4 +1,4 @@
-export const roomVisual = {
+export const RoomVisual = {
   run: function (roomName: string) {
     this.upgrade(roomName);
     this.spawnCreep(roomName);
@@ -25,6 +25,9 @@ export const roomVisual = {
   spawnCreep: function (roomName: string) {
     let room = Game.rooms[roomName];
     let spawns = room.find(FIND_MY_SPAWNS);
+    if (spawns.length == 0) {
+      return;
+    }
     for (let i = 0; i < spawns.length; ++i) {
       let pos = spawns[i].pos;
       let spawning = spawns[i].spawning;

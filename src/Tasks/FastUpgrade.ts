@@ -1,5 +1,5 @@
-import { MyMemory } from "@/Memory/MyMemory";
-import { SpawnCreep } from "./SpawnCreep";
+import { MyMemory } from "@/memory/myMemory";
+import { SpawnCreep } from "./spawnCreep";
 
 export const FastUpgrade = {
   run: function (room: Room) {

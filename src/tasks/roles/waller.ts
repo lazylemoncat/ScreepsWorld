@@ -1,16 +1,16 @@
-import { MyMemory } from "@/Memory/MyMemory";
-import { Withdraw } from "../Withdraw";
+import { MyMemory } from "@/memory/myMemory";
+import { Withdraw } from "../withdraw";
 
-export const Repairer = {
+export const waller = {
   run: function (room: Room): void {
-    let repairers = _.filter(Game.creeps, (creep) => creep.memory.role 
-      == "repairer");
-    for (let i = 0; i < repairers.length; ++i) {
-      let repairer = repairers[i];
-      if (MyMemory.upateWorking(repairer, "energy")) {
-        this.goRepair(repairer, room);
+    let wallers = _.filter(Game.creeps, (creep) => creep.memory.role 
+      == "waller");
+    for (let i = 0; i < wallers.length; ++i) {
+      let waller = wallers[i];
+      if (MyMemory.upateWorking(waller, "energy")) {
+        this.goRepair(waller, room);
       } else {
-        Withdraw.energy(repairer, room);
+        Withdraw.energy(waller, room);
       }
     }
     return;
@@ -30,7 +30,8 @@ export const Repairer = {
       }
     }
     let structures = room.find(FIND_STRUCTURES).filter(
-      i => i.structureType != STRUCTURE_WALL);
+        i => i.structureType == "constructedWall"
+            || i.structureType == "rampart");
     let targets = structures.filter(i => i.hits < i.hitsMax);
     targets.sort((a,b) => a.hits - b.hits);
     if (targets[0] == undefined) {

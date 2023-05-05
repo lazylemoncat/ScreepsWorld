@@ -8,8 +8,7 @@ export const Withdraw = {
     let amount = creep.store.getFreeCapacity();
     let containers = _.filter(room.find(FIND_STRUCTURES), (i) =>
       i.structureType == "container"
-      && i.store["energy"] >= amount
-      && i.pos.findInRange(FIND_SOURCES, 2)[0] != undefined) as 
+      && i.store["energy"] >= amount) as 
       StructureContainer[];
     let links = _.filter(room.find(FIND_STRUCTURES), (i) =>
       i.structureType == "link"

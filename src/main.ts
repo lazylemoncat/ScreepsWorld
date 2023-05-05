@@ -1,9 +1,13 @@
-import "./Global/Market";
-import "./Global/Tasks";
-import { MyMemory } from "./Memory/MyMemory";
-import { RoomMaintain } from "./Tasks/RoomMaintain";
-import { SpawnCreep } from "./Tasks/SpawnCreep";
+import "./global/market";
+import "./global/tasks";
+import { MyMemory } from "./memory/myMemory";
+import { RoomMaintain } from "./tasks/roomMaintain";
+import { SpawnCreep } from "./tasks/spawnCreep";
 
+/**
+ * 每 tick 都执行的动作
+ * @returns {void}
+ */
 export const loop = function () {
   // 运行市场的自动买卖
   global.Market.run();
