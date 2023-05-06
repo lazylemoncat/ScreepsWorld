@@ -53,7 +53,10 @@ export const Transfer = {
         }
         if (Carrier.goTransfer(carrier, room, target, 
           transfered == i, costs)) {
-          if (target != room.storage && carrier.store["energy"] != 0) {
+          if (target != room.storage 
+              && carrier.store["energy"] 
+              - target.store.getFreeCapacity(RESOURCE_ENERGY) >= 0)
+          {
             transfered = i;
             --i;
           }

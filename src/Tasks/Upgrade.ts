@@ -30,7 +30,7 @@ export const Upgrade = {
       return bodys;
     }
     const consume = 200;
-    let times = (energy - consume) / 200;
+    let times = Math.floor((energy - consume) / 200);
     for (let i = 0; i < times; ++i) {
       bodys.push(WORK, CARRY, MOVE);
     }

@@ -7,13 +7,14 @@ import { Transfer } from "./transfer";
 import { Upgrade } from "./upgrade";
 import { RoomVisual } from "@/visual/roomVisual";
 import { Repair } from "./repair";
+import { centerTransferer } from "./centerTransferer";
 
 export const RoomMaintain = {
   run: function () {
     for (let roomName in Game.rooms) {
       let room = Game.rooms[roomName];
       if (room.controller == undefined || !room.controller.my) {
-        return;
+        continue;
       }
       let level = 0;
       if (room.controller != undefined) {
@@ -27,9 +28,10 @@ export const RoomMaintain = {
       RoomVisual.run(roomName);
       let costs = this.roomCallBack(room);
       Harvest.run(room);
+      centerTransferer.run(room);
       Transfer.run(room, costs);
       if (Build.run(room) == 0) {
-        Upgrade.run(room, 3);
+        Upgrade.run(room, 1);
       } else {
         Upgrade.run(room);
       }

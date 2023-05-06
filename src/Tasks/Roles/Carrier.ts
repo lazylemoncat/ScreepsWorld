@@ -10,7 +10,6 @@ export const Carrier = {
       if (creep.transfer(room.storage, resouceType) 
         == ERR_NOT_IN_RANGE) {
         creep.moveTo(room.storage);
-        
         return false;
       }
     }

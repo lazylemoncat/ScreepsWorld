@@ -1,7 +1,7 @@
 import { Harvester } from "./roles/harvester";
 import { Mineraler } from "./roles/mineraler";
 import { SpawnCreep } from "./spawnCreep";
-
+import  creepRole  from './roles';
 export const Harvest = {
   run: function (room: Room) {
     let sources = room.find(FIND_SOURCES);
@@ -75,8 +75,8 @@ export const Harvest = {
       return bodys;
     }
     const consume = 300;
-    let times = (energy - consume) / 250;
-    for (let i = 1; i < times; ++i) {
+    let times = Math.floor((energy - consume) / 250);
+    for (let i = 0; i < times; ++i) {
       bodys.push(WORK, WORK, MOVE);
     }
     return bodys;

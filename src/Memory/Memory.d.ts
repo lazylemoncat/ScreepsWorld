@@ -9,6 +9,8 @@ interface Memory {
     price?: number,
     room?: string
   },
+  /** 外矿受到攻击后,延迟采集的时间 */
+  delayHarvest?: {room: string, time: number},
 }
 interface CreepMemory {
   /** creep 的角色 */
@@ -24,6 +26,10 @@ interface CreepMemory {
     resource: ResourceConstant,
     amount?: number;
   },
+  /** source 的 ID */
+  sourceId?: Id<Source>,
+  /** 外矿对应的房间 */
+  outerRoom?: string,
   _move?: any;
   boosted?: boolean;
 }

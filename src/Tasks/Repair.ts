@@ -8,16 +8,17 @@ export const Repair = {
     let towers = _.filter(room.find(FIND_STRUCTURES), (i) =>
       i.structureType == "tower") as StructureTower[];
     if (towers.length > 0) {
-      let structures = room.find(FIND_STRUCTURES).filter(
-        i => i.hits < i.hitsMax && i.structureType != STRUCTURE_WALL);
+      let structures = room.find(FIND_STRUCTURES).filter( i => 
+          i.hits < i.hitsMax 
+          && i.structureType != STRUCTURE_WALL 
+          && i.structureType != STRUCTURE_RAMPART
+          || (i.structureType == STRUCTURE_RAMPART && i.hits < 1000));
       structures.sort((a,b) => a.hits - b.hits);
-      if (structures[0] == undefined) {
-        return;
-      }
       for (let i = 0; i < structures.length && i < towers.length; ++i) {
         Tower.repair(structures[i], room);
       }
     }
+    return;
     let wallers = _.filter(Game.creeps, (creep) => creep.memory.role 
       == "waller" && creep.pos.roomName == room.name);
     if (wallers.length < 1) {
@@ -31,7 +32,7 @@ export const Repair = {
       return;
     }
     
-    waller.run(room);
+    // waller.run(room);
     return;
   },
   returnBodys: function (room: Room) {

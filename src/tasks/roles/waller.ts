@@ -30,8 +30,7 @@ export const waller = {
       }
     }
     let structures = room.find(FIND_STRUCTURES).filter(
-        i => i.structureType == "constructedWall"
-            || i.structureType == "rampart");
+        i => i.structureType == "rampart");
     let targets = structures.filter(i => i.hits < i.hitsMax);
     targets.sort((a,b) => a.hits - b.hits);
     if (targets[0] == undefined) {
