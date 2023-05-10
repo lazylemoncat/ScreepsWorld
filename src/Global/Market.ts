@@ -88,7 +88,6 @@ global.Market = {
       }
       let dealAmount = amount - orders[i].amount > 0 
         ? orders[i].amount : amount;
-      console.log(orders[i].price);
       let res = 0;
       if (room == undefined) {
         res = Game.market.deal(orders[i].id, dealAmount);

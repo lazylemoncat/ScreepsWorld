@@ -34,7 +34,7 @@ export const RoomVisual = {
       if (spawning != undefined) {
         room.visual.text(spawning.name, pos.x + 1, pos.y, { 
           align: "left",
-          color: "green"
+          color: "green",
         });
       }
     }

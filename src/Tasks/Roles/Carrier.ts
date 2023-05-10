@@ -24,29 +24,27 @@ export const Carrier = {
     return true;
   },
   goWithdrawEnergy: function (creep: Creep, room: Room, 
-    costs: CostMatrix) {
+      costs: CostMatrix) {
     let amount = creep.store.getFreeCapacity();
     if (amount == 0) {
       return;
     }
-    let resouce = room.find(FIND_DROPPED_RESOURCES).filter(i =>
-      i.resourceType == "energy" && i.amount >= 500);
-    let tombstone = room.find(FIND_TOMBSTONES).filter(i =>
-      i.store["energy"] >= 500);
     let containers = _.filter(room.find(FIND_STRUCTURES), (i) =>
       i.structureType == "container"
       && (i.store["energy"] >= amount || i.store["energy"] >= 500)
-      && i.pos.findInRange(FIND_SOURCES, 2)[0] != undefined) as 
-      StructureContainer[];
+      && i.pos.findInRange(FIND_SOURCES, 2)[0] != undefined
+    ) as StructureContainer[];
     let links = _.filter(room.find(FIND_STRUCTURES), (i) =>
-    i.structureType == "link"
-    && i.store["energy"] >= 100
-    && i.pos.findInRange(FIND_SOURCES, 2).length == 0) as 
-    StructureLink[];
+      i.structureType == "link"
+      && i.store["energy"] >= 100
+      && i.pos.findInRange(FIND_SOURCES, 2).length == 0
+      && i.pos.getRangeTo(room.controller!) > 3
+      && i.pos.getRangeTo(room.find(FIND_MY_SPAWNS)[0]) != 1
+    ) as StructureLink[];
 
-    let targets: (Resource<ResourceConstant> | Tombstone | StructureTerminal
-      | StructureContainer | StructureStorage | StructureLink)[]
-      = [...resouce,...tombstone, ...containers,...links];
+    let targets: (StructureTerminal | StructureContainer 
+        | StructureStorage | StructureLink)[]
+      = [...containers,...links];
     if (room.terminal != undefined) {
       if (room.terminal.store["energy"] >= 100000) {
         targets.push(room.terminal);

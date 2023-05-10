@@ -30,9 +30,9 @@ export const Upgrade = {
       return bodys;
     }
     const consume = 200;
-    let times = Math.floor((energy - consume) / 200);
+    let times = Math.floor((energy - consume) / 250);
     for (let i = 0; i < times; ++i) {
-      bodys.push(WORK, CARRY, MOVE);
+      bodys.push(WORK, WORK, MOVE);
     }
     return bodys;
   },

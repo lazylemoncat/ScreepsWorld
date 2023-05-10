@@ -1,51 +1,24 @@
-
-import { SpawnCreep } from "./spawnCreep";
-import { Tower } from "../structures/tower";
-import { waller } from "./roles/waller";
-
+import { towers } from "../structures/towers";
 export const Repair = {
   run: function (room: Room) {
-    let towers = _.filter(room.find(FIND_STRUCTURES), (i) =>
+    let roomTowers = _.filter(room.find(FIND_STRUCTURES), (i) =>
       i.structureType == "tower") as StructureTower[];
-    if (towers.length > 0) {
+    if (roomTowers.length > 0) {
+      let creep = _.find(room.find(FIND_MY_CREEPS), i => i.hits < i.hitsMax);
+      if (creep != undefined) {
+        roomTowers[0].heal(creep);
+        return;
+      }
       let structures = room.find(FIND_STRUCTURES).filter( i => 
           i.hits < i.hitsMax 
           && i.structureType != STRUCTURE_WALL 
           && i.structureType != STRUCTURE_RAMPART
           || (i.structureType == STRUCTURE_RAMPART && i.hits < 1000));
       structures.sort((a,b) => a.hits - b.hits);
-      for (let i = 0; i < structures.length && i < towers.length; ++i) {
-        Tower.repair(structures[i], room);
+      for (let i = 0; i < structures.length && i < roomTowers.length; ++i) {
+        towers.repair(structures[i], room);
       }
     }
     return;
-    let wallers = _.filter(Game.creeps, (creep) => creep.memory.role 
-      == "waller" && creep.pos.roomName == room.name);
-    if (wallers.length < 1) {
-      let newListPush = {
-        role: "waller",
-        bodys: this.returnBodys(room),
-      };
-      SpawnCreep.newList.push(newListPush);
-    }
-    if (wallers.length == 0) {
-      return;
-    }
-    
-    // waller.run(room);
-    return;
-  },
-  returnBodys: function (room: Room) {
-    let energy = room.energyAvailable;
-    let bodys = [WORK, CARRY, MOVE];
-    if (energy < 300) {
-      return bodys;
-    }
-    const consume = 200;
-    let times = (energy - consume) / 200;
-    for (let i = 0; i < Math.trunc(times); ++i) {
-      bodys.push(WORK, CARRY, MOVE);
-    }
-    return bodys;
   },
 }

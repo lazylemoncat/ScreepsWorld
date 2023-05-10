@@ -90,7 +90,6 @@ global.Market = {
             }
             let dealAmount = amount - orders[i].amount > 0
                 ? orders[i].amount : amount;
-            console.log(orders[i].price);
             let res = 0;
             if (room == undefined) {
                 res = Game.market.deal(orders[i].id, dealAmount);
@@ -187,44 +186,111 @@ const MyMemory = {
             return;
         }
         Memory.bornRoom = Game.spawns["Spawn1"].room.name;
+        Memory.delayHarvest = {};
+        Memory.spawns = {};
     },
 };
 
-const outerSource = {
+const spawns = {
+    /**
+     * 判断第一个 spawn 是否空闲
+     * @param room
+     * @returns {boolean} 第一个 spawn 是否空闲
+     */
+    isFreeFirstSpawn: function (room, role) {
+        let spawn = room.find(FIND_MY_SPAWNS)[0];
+        if (spawn.spawning == null
+            && Memory.spawns[spawn.name].spawnFree != Game.time) {
+            Memory.spawns[spawn.name].spawnFree = Game.time;
+            return spawn;
+        }
+        else {
+            return undefined;
+        }
+    },
+};
+/**
+ * 返回该房间的空闲 spawn
+ * @param room 判断的目标房间
+ * @returns {StructureSpawn | undefined} 空闲的 spawn
+ */
+const returnFreeSpawn = function (room) {
+    let spawn = _.find(room.find(FIND_MY_SPAWNS), i => i.spawning == null
+        && Memory.spawns[i.name].spawnFree != Game.time);
+    if (spawn == undefined) {
+        return undefined;
+    }
+    else {
+        Memory.spawns[spawn.name].spawnFree = Game.time;
+        return spawn;
+    }
+};
+
+const outerSource = function (context) {
     /**
      * 执行外矿行为
-     * @param room 执行外矿的房间
      */
-    run: function (room) {
+    const run = function () {
         // 检查是否需要生成新的采矿或运输 creep
-        let spawn = room.find(FIND_MY_SPAWNS)[0];
-        this.checkSpawnCreep(spawn, room);
+        checkSpawnCreep(context.room);
         // 遍历所有的外矿 creep 
         let outerCreeps = _.filter(Game.creeps, i => i.memory.role == 'outerHarvester'
             || i.memory.role == 'outerCarrier'
-            || i.memory.role == 'outerClaimer');
+            || i.memory.role == 'outerClaimer'
+            || i.memory.role == 'outerDefender'
+            || i.memory.role == 'outerBuilder');
         for (let i = 0; i < outerCreeps.length; ++i) {
             // 获取 creep 对象 
             let creep = outerCreeps[i];
             // 根据 creep 的角色执行不同的行为 
-            if (creep.memory.role == 'outerHarvester') {
-                this.runHarvester(creep);
-            }
-            else if (creep.memory.role == 'outerCarrier') {
-                this.runCarrier(creep, room);
-            }
-            else if (creep.memory.role == 'outerClaimer') {
-                this.runOuterClaimer(creep);
+            switch (creep.memory.role) {
+                // 0.22cpu
+                case 'outerHarvester':
+                    runHarvester(creep);
+                    break;
+                // 0.23cpu
+                case 'outerCarrier':
+                    runCarrier(creep, context.room);
+                    break;
+                // 0.23cpu
+                case 'outerClaimer':
+                    runOuterClaimer(creep);
+                    break;
+                // 0.3cpu
+                case 'outerDefender':
+                    runOuterDefender(creep);
+                    break;
+                case 'outerBuilder':
+                    runOuterBuilder(creep);
+                    break;
             }
         }
         return;
-    },
+    };
+    /**
+     * 返回守护者的身体部件数组
+     * @param room 生产守护者的房间
+     * @returns {BodyPartConstant[]} 守护者的身体部件数组
+     */
+    const createOuterDefenderBody = function (room) {
+        let energy = room.energyCapacityAvailable;
+        let bodysNum = Math.floor(energy / 130);
+        bodysNum = bodysNum > 10 ? 10 : bodysNum;
+        let bodys = [];
+        for (let i = 0; i < bodysNum; ++i) {
+            bodys.push(MOVE);
+        }
+        for (let i = 0; i < bodysNum; ++i) {
+            bodys.push(ATTACK);
+        }
+        return bodys;
+    };
     /**
      * 返回采矿爬的身体
      * @param room 生产爬的房间
      * @returns {BodyPartConstant[]} 身体部件数组
      */
-    createHarvesterBody: function (room) {
+    const createHarvesterBody = function (room) {
         let energy = room.energyCapacityAvailable;
         let bodys = [WORK, WORK, CARRY, MOVE];
         if (energy >= 800) {
@@ -237,187 +303,348 @@ const outerSource = {
             bodys.push(WORK, WORK, MOVE);
         }
         return bodys;
-    },
+    };
     /**
      * 返回运输爬的身体
      * @param room 生产爬的房间
      * @returns {BodyPartConstant[]} 身体部件数组
      */
-    createCarrierBody: function (room) {
+    const createCarrierBody = function (room) {
         let energy = room.energyCapacityAvailable;
-        let bodys = [CARRY, MOVE];
         if (energy <= 300) {
-            bodys = [CARRY, MOVE];
+            return [CARRY, MOVE];
         }
-        const consume = 100;
-        let times = Math.floor((energy - consume) / 100);
-        for (let i = 0; i < times; ++i) {
-            bodys.push(CARRY, MOVE);
+        let bodys = [];
+        let carryNum = Math.floor(energy / 150);
+        carryNum = carryNum >= 48 ? 48 : carryNum;
+        for (let i = 0; i < carryNum; ++i) {
+            bodys.push(CARRY, CARRY, MOVE);
         }
         return bodys;
-    },
+    };
     /**
      * 返回预定者的身体部件数组
      * @returns {BodyPartConstant[]} 身体部件数组
      */
-    createOuterClaimerBody: function () {
+    const createOuterClaimerBody = function () {
         return [CLAIM, CLAIM, MOVE, MOVE];
-    },
+    };
+    /**
+     * 返回外矿建筑师的身体部件数组
+     * @param room 生产 creep 的房间
+     * @returns {BodyPartConstant[]} 外矿建筑师的身体部件数组
+     */
+    const createOuterBuilderBody = function (room) {
+        let energy = room.energyCapacityAvailable;
+        let bodysNum = Math.floor(energy / 200);
+        let body = [];
+        for (let i = 0; i < bodysNum; ++i) {
+            body.push(WORK, CARRY, MOVE);
+        }
+        return body;
+    };
+    /**
+     * 返回守护者的名字
+     * @param room 目标房间对象
+     * @returns {string} 守护者的名字
+     */
+    const createOuterDefenderName = function (roomName) {
+        return 'defender' + roomName + '_' + Game.time % 10;
+    };
     /**
      * 生成采矿爬的名字
      * @param sourceId 目标 source 的ID
      * @returns {string} 采矿爬的名字
      */
-    createHarvesteName: function (sourceId) {
-        return 'outerHarvester_' + sourceId;
-    },
+    const createHarvesteName = function (roomName) {
+        return 'outerHarvester' + roomName + '_' + Game.time % 10;
+    };
     /**
      * 生成运输爬的名字
      * @param sourceId 目标 source 的ID
      * @param index 目标 source 的第几个运输爬
      * @returns {string} 运输爬的名字
      */
-    createCarrierName: function (sourceId, index) {
-        return 'outerCarrier_' + sourceId + '_' + index;
-    },
+    const createCarrierName = function () {
+        return 'outerCarrier' + '_' + Game.time % 100;
+    };
     /**
      * 返回预定者的名字
      * @param roomName 目标外矿的房间名
      * @returns 预定者的名字
      */
-    createOuterClaimerName: function (roomName) {
-        return 'outerClaimer' + roomName;
-    },
+    const createOuterClaimerName = function (roomName) {
+        return 'outerClaimer' + '_' + roomName;
+    };
+    /**
+     * 返回外矿建筑师的名字
+     * @param roomName 目标外矿的房间名
+     * @returns {string} 外矿建筑师的名字
+     */
+    const createOuterBuilderName = function (roomName) {
+        return 'outerBuilder' + roomName + '_' + Game.time % 10;
+    };
+    /**
+     * 生产外矿守护者
+     * @param spawn 空闲的 spawn
+     * @param flag 目标 outerSource 外矿的旗子
+     * @param bornRoom 生产守护者的房间
+     */
+    const newOuterDefender = function (flag, bornRoom) {
+        //  找到空闲的 spawn
+        let spawn = context.returnFreeSpawn(bornRoom);
+        // 若没有空闲的 spawn,则不检查了
+        if (spawn == undefined) {
+            return;
+        }
+        let name = createOuterDefenderName(flag.pos.roomName);
+        let body = createOuterDefenderBody(bornRoom);
+        let memory = {
+            role: 'outerDefender',
+            bornRoom: bornRoom.name,
+            outerRoom: flag.pos.roomName,
+            flag: { name: flag.name, pos: flag.pos },
+        };
+        // 生成一个新的守护者
+        spawn.spawnCreep(body, name, {
+            memory: memory,
+            directions: [TOP_LEFT, LEFT, BOTTOM_LEFT],
+        });
+        return;
+    };
+    /**
+     * 生产一个新的外矿采集者
+     * @param spawn 空闲的 spawn
+     * @param room 目标外矿对象
+     * @param bornRoom 生产 creep 房间对象
+     * @param source 目标 source
+     */
+    const newOuterHarvester = function (room, bornRoom, source) {
+        //  找到空闲的 spawn
+        let spawn = context.returnFreeSpawn(bornRoom);
+        // 若没有空闲的 spawn,则不检查了
+        if (spawn == undefined) {
+            return;
+        }
+        let name = createHarvesteName(room.name);
+        let body = createHarvesterBody(bornRoom);
+        let memory = {
+            role: 'outerHarvester',
+            bornRoom: room.name,
+            source: { id: source.id, pos: source.pos },
+            outerRoom: room.name,
+        };
+        // 生成一个新的采矿 creep
+        spawn.spawnCreep(body, name, {
+            memory: memory,
+            directions: [TOP_LEFT, LEFT, BOTTOM_LEFT],
+        });
+        return;
+    };
+    /**
+     * 生产一个新的外矿采集者
+     * @param spawn 空闲的 spawn
+     * @param room 目标外矿对象
+     * @param bornRoom 生产新的外矿采集者的房间对象
+     * @param source 目标 source 对象
+     */
+    const newOuterCarrier = function (room, bornRoom, source) {
+        //  找到空闲的 spawn
+        let spawn = context.returnFreeSpawn(bornRoom);
+        // 若没有空闲的 spawn,则不检查了
+        if (spawn == undefined) {
+            return;
+        }
+        let name = createCarrierName();
+        let body = createCarrierBody(bornRoom);
+        let memory = {
+            role: 'outerCarrier',
+            bornRoom: bornRoom.name,
+            source: { id: source.id, pos: source.pos },
+            outerRoom: room.name,
+        };
+        // 生成一个新的运输 creep
+        spawn.spawnCreep(body, name, {
+            memory: memory,
+            directions: [TOP_LEFT, LEFT, BOTTOM_LEFT],
+        });
+        return;
+    };
+    /**
+     * 生产一个新的预定者
+     * @param spawn 空闲的 spawn
+     * @param room 目标外矿对象
+     * @param bornRoom 生产新的预定者的房间对象
+     */
+    const newOuterClaimer = function (room, bornRoom) {
+        //  找到空闲的 spawn
+        let spawn = context.returnFreeSpawn(bornRoom);
+        // 若没有空闲的 spawn,则不检查了
+        if (spawn == undefined) {
+            return;
+        }
+        let name = createOuterClaimerName(room.name);
+        let body = createOuterClaimerBody();
+        let memory = {
+            role: 'outerClaimer',
+            bornRoom: bornRoom.name,
+            outerRoom: room.name,
+        };
+        // 生成一个新的预定者
+        spawn.spawnCreep(body, name, {
+            memory: memory,
+            directions: [TOP_LEFT, LEFT, BOTTOM_LEFT],
+        });
+        return;
+    };
+    /**
+     * 生产新的外矿建筑师
+     * @param spawn 空闲的 spawn
+     * @param room 目标外矿对象
+     * @param bornRoom 生产外矿建筑师的房间对象
+     */
+    const newOuterBuilder = function (room, bornRoom) {
+        //  找到空闲的 spawn
+        let spawn = context.returnFreeSpawn(bornRoom);
+        // 若没有空闲的 spawn,则不检查了
+        if (spawn == undefined) {
+            return;
+        }
+        let name = createOuterBuilderName(room.name);
+        let body = createOuterBuilderBody(bornRoom);
+        let memory = {
+            role: 'outerBuilder',
+            bornRoom: bornRoom.name,
+            outerRoom: room.name,
+        };
+        spawn.spawnCreep(body, name, {
+            memory: memory,
+            directions: [TOP_LEFT, LEFT, BOTTOM_LEFT],
+        });
+        return;
+    };
     /**
      * 检查是否需要产 creep，如果是，则生产 creep
      * @param spawn 目标 spawn
      * @param bornRoom 生成 creep 的房间
      */
-    checkSpawnCreep: function (spawn, bornRoom) {
+    const checkSpawnCreep = function (bornRoom) {
         // 找到所有名字中含有 outerSource 的旗子
         let flags = Object.keys(Game.flags).filter(key => key.includes('outerSource'));
         for (let i = 0; i < flags.length; ++i) {
             let flag = Game.flags[flags[i]];
-            // 如果没有找到 flag ，则返回
-            if (!flag) {
-                return;
-            }
             // 获取 flag 所在房间的对象
             let room = flag.room;
-            // 如果没有找到房间对象，说明没有房间视野，则派出 scout 后返回
-            if (!room) {
-                this.scout(bornRoom, flags[i]);
+            // 检查是否有足够的守护者
+            let outerDefender = _.find(Game.creeps, i => i.memory.role == 'outerDefender'
+                && i.memory.outerRoom == flag.pos.roomName);
+            if (outerDefender == undefined) {
+                // 如果不够，则尝试生成一个新的守护者
+                newOuterDefender(flag, bornRoom);
+                // 返回
                 return;
             }
-            if (this.delayHarvest(room)) {
-                return;
+            // 如果没有房间视野则返回,检查下一个外矿
+            if (!room) {
+                continue;
             }
             // 获取 flag 房间内的所有 source 对象
             let sources = Game.rooms[flag.pos.roomName].find(FIND_SOURCES);
             // 遍历每个能量矿
             for (let source of sources) {
-                // 获取能量矿的 id
-                let sourceId = source.id;
                 // 检查是否有足够数量的采矿 creep
-                let outerHarvesters = _.filter(Game.creeps, i => i.memory.role == 'outerHarvester' && i.memory.sourceId == sourceId);
+                let outerHarvesters = _.filter(Game.creeps, i => i.memory.role == 'outerHarvester'
+                    && i.memory.source.id == source.id);
                 if (outerHarvesters.length < 1) {
                     // 如果不够，则尝试生成一个新的采矿 creep
-                    let name = this.createHarvesteName(sourceId);
-                    let body = this.createHarvesterBody(bornRoom);
-                    let memory = {
-                        role: 'outerHarvester',
-                        sourceId: source.id,
-                        outerRoom: room.name,
-                    };
-                    // 生成一个新的采矿 creep
-                    spawn.spawnCreep(body, name, {
-                        memory: memory,
-                        directions: [TOP_LEFT, LEFT, BOTTOM_LEFT],
-                    });
+                    newOuterHarvester(room, bornRoom, source);
                     // 返回，不再检查其他能量矿
                     return;
                 }
                 // 检查是否有足够数量的运输 creep
-                let carriers = _.filter(Game.creeps, i => i.memory.role == 'outerCarrier' && i.memory.sourceId == sourceId);
+                let carriers = _.filter(Game.creeps, i => i.memory.role == 'outerCarrier'
+                    && i.memory.source.id == source.id);
                 if (carriers.length < 1) {
                     // 如果不够，则尝试生成一个新的运输 creep
-                    let index = carriers.length + 1;
-                    let name = this.createCarrierName(sourceId, index);
-                    let body = this.createCarrierBody(bornRoom);
-                    let memory = {
-                        role: 'outerCarrier',
-                        sourceId: sourceId,
-                        outerRoom: room.name,
-                    };
-                    // 生成一个新的运输 creep
-                    spawn.spawnCreep(body, name, {
-                        memory: memory,
-                        directions: [TOP_LEFT, LEFT, BOTTOM_LEFT],
-                    });
+                    newOuterCarrier(room, bornRoom, source);
                     // 返回，不再检查其他能量矿
                     return;
                 }
-                // 控制器等级小于4没必要出预定者
-                if (bornRoom.controller.level < 4) {
-                    continue;
-                }
-                // 检查是否有预定者
-                let claimer = _.find(Game.creeps, i => i.memory.role == 'outerClaimer'
-                    && i.memory.outerRoom == room.name);
-                // 如果没有，则生成一个
-                if (claimer == undefined) {
-                    let name = this.createOuterClaimerName(room.name);
-                    let body = this.createOuterClaimerBody();
-                    let memory = {
-                        role: 'outerClaimer',
-                        outerRoom: room.name,
-                    };
-                    // 生成一个新的预定者
-                    spawn.spawnCreep(body, name, {
-                        memory: memory,
-                        directions: [TOP_LEFT, LEFT, BOTTOM_LEFT],
-                    });
-                    return;
-                }
+            }
+            // 控制器等级小于4没必要出预定者和建筑师
+            if (bornRoom.controller.level < 4) {
+                continue;
+            }
+            let builderDelay = false;
+            if (Memory.delayTime != undefined
+                && Memory.delayTime['outerBuilder' + room.name] != undefined) {
+                let delay = Memory.delayTime['outerBuilder' + room.name];
+                builderDelay = Game.time <= delay.time + delay.delay;
+            }
+            // 检查是否有建筑师
+            let builder = _.find(Game.creeps, i => i.memory.role == 'outerBuilder'
+                && i.memory.outerRoom == room.name);
+            // 如果没有,则新生产一个
+            if (builder == undefined && !builderDelay) {
+                newOuterBuilder(room, bornRoom);
+                return;
+            }
+            // 检查是否有预定者
+            let claimer = _.find(Game.creeps, i => i.memory.role == 'outerClaimer'
+                && i.memory.outerRoom == room.name);
+            // 如果预定时间高于3000 则不用那么快生成
+            if (room.controller.reservation != undefined
+                && room.controller.reservation.ticksToEnd > 3000) {
+                continue;
+            }
+            // 如果没有，则生成一个
+            if (claimer == undefined) {
+                newOuterClaimer(room, bornRoom);
+                return;
             }
         }
         return;
-    },
+    };
     /**
      * 执行采矿爬行为
      * @param creep 目标采矿爬对象
      */
-    runHarvester: function (creep) {
-        let sourceId = creep.memory.sourceId;
-        // 根据 id 获取能量矿对象
-        let source = Game.getObjectById(sourceId);
-        // 如果没有找到能量矿对象，说明没有房间视野，则向该房间移动
+    const runHarvester = function (creep) {
+        let source = Game.getObjectById(creep.memory.source.id);
         if (!source) {
-            creep.moveTo(new RoomPosition(25, 25, creep.memory.outerRoom));
+            creep.moveTo(new RoomPosition(25, 25, context.room.name), {
+                reusePath: 20,
+                maxOps: 1000,
+            });
+            return;
+        }
+        // 如果不在范围内，则向能量矿移动
+        if (creep.pos.getRangeTo(source) > 1) {
+            creep.moveTo(source, {
+                maxOps: 1000,
+            });
             return;
         }
         // 尝试采集能量矿
-        let result = creep.harvest(source);
-        // 如果不在范围内，则向能量矿移动
-        if (result == ERR_NOT_IN_RANGE) {
-            creep.moveTo(source);
+        let container = creep.pos.findInRange(FIND_STRUCTURES, 1).filter(i => i.structureType == STRUCTURE_CONTAINER);
+        if (container[0] != undefined) {
+            if (creep.getActiveBodyparts(WORK) * 4 >
+                creep.store.getFreeCapacity()) {
+                let result = creep.transfer(container[0], RESOURCE_ENERGY);
+                if (result == ERR_FULL) {
+                    return;
+                }
+            }
         }
+        creep.harvest(source);
         return;
-    },
+    };
     /**
      * 执行运输爬行为
      * @param creep 目标运输爬对象
      * @param room 将能量带回来的房间，即生产房
      */
-    runCarrier: function (creep, room) {
-        let sourceId = creep.memory.sourceId;
-        // 根据 id 获取能量矿对象
-        let source = Game.getObjectById(sourceId);
-        // 如果没有找到能量矿对象，说明没有房间视野，则向 flag 移动
-        if (!source) {
-            creep.moveTo(new RoomPosition(25, 25, creep.memory.outerRoom));
-            return;
-        }
+    const runCarrier = function (creep, room) {
         // 判断 creep 是否在工作模式
         if (creep.memory.working && creep.store[RESOURCE_ENERGY] == 0) {
             // 如果在工作模式且没有能量了，则切换到非工作模式
@@ -429,7 +656,23 @@ const outerSource = {
         }
         // 根据工作模式执行不同的行为
         if (creep.memory.working) {
+            if (creep.pos.roomName != room.name) {
+                creep.moveTo(new RoomPosition(25, 25, room.name), {
+                    reusePath: 20,
+                    maxOps: 1000,
+                });
+                return;
+            }
             // 在工作模式下，将能量运输回基地
+            let storage = room.storage;
+            if (storage != undefined) {
+                if (creep.transfer(storage, RESOURCE_ENERGY) == ERR_NOT_IN_RANGE) {
+                    creep.moveTo(storage, {
+                        maxOps: 1000,
+                    });
+                }
+                return;
+            }
             // 获取基地的 container 对象
             let container = _.filter(room.find(FIND_STRUCTURES), i => i.structureType == STRUCTURE_CONTAINER
                 && i.store.getFreeCapacity(RESOURCE_ENERGY) > 0);
@@ -437,23 +680,30 @@ const outerSource = {
             let target = creep.pos.findClosestByRange(container);
             // 如果没有找到最近的对象，说明并不在基地房间里，则向基地移动
             if (target == null) {
-                creep.moveTo(new RoomPosition(25, 25, room.name), {
-                    reusePath: 20,
-                    maxOps: 2000,
-                });
                 return;
             }
             // 尝试将能量转移给 container
             let result = creep.transfer(target, RESOURCE_ENERGY);
             // 如果不在范围内，则向 container 移动
             if (result == ERR_NOT_IN_RANGE) {
-                creep.moveTo(target);
+                creep.moveTo(target, {
+                    maxOps: 1000,
+                });
             }
         }
         else {
+            // 根据 id 获取能量矿对象
+            let source = Game.getObjectById(creep.memory.source.id);
+            // 如果没有找到能量矿对象，说明没有房间视野，则向 flag 移动
+            if (!source) {
+                creep.moveTo(source, {
+                    maxOps: 1000,
+                });
+                return;
+            }
             // 在非工作模式下，从 container 或地上掉落的资源中获取能量
             // 获取能量矿旁边的 container 对象
-            let container = source.pos.findInRange(FIND_STRUCTURES, 1, {
+            let container = source.pos.findInRange(FIND_STRUCTURES, 2, {
                 filter: s => s.structureType == STRUCTURE_CONTAINER
             })[0];
             // 获取 source 旁边掉落的资源对象
@@ -465,7 +715,9 @@ const outerSource = {
                 if (creep.pos.getRangeTo(source) < 3) {
                     return;
                 }
-                creep.moveTo(source);
+                creep.moveTo(source, {
+                    maxOps: 1000,
+                });
                 return;
             }
             // 尝试从 container 中取出能量
@@ -474,29 +726,32 @@ const outerSource = {
                 result = creep.withdraw(container, RESOURCE_ENERGY);
                 // 如果不在范围内，则向 container 移动
                 if (result == ERR_NOT_IN_RANGE) {
-                    creep.moveTo(container);
+                    creep.moveTo(container, {
+                        maxOps: 1000,
+                    });
                 }
             }
             else {
                 result = creep.pickup(resource);
                 // 如果不在范围内，则向 resource 移动
                 if (result == ERR_NOT_IN_RANGE) {
-                    creep.moveTo(resource);
+                    creep.moveTo(resource, {
+                        maxOps: 1000,
+                    });
                 }
             }
         }
         return;
-    },
+    };
     /**
      * 执行预定者任务
      * @param creep 预定者对象
      */
-    runOuterClaimer: function (creep) {
+    const runOuterClaimer = function (creep) {
         // 获取控制器对象
         let room = Game.rooms[creep.memory.outerRoom];
-        let controller = room.controller;
-        // 如果没有找到控制器对象，说明没有房间视野，则向该房间移动
-        if (!controller) {
+        // 如果没有找到房间对象，说明没有房间视野，则向该房间移动
+        if (!room) {
             creep.moveTo(new RoomPosition(25, 25, creep.memory.outerRoom), {
                 maxOps: 1000,
                 reusePath: 20,
@@ -504,50 +759,127 @@ const outerSource = {
             return;
         }
         // 尝试预定控制器,若不够距离则移动至控制器
+        let controller = room.controller;
         if (creep.reserveController(controller) == ERR_NOT_IN_RANGE) {
-            creep.moveTo(controller);
-            return;
-        }
-        return;
-    },
-    /**
-     * 执行 scout 行为，使其移动至目标房间获取房间视野
-     * @param room 生产 scout 的房间对象
-     */
-    scout: function (room, flagName) {
-        let flag = Game.flags[flagName];
-        // 如果找不到旗子,则返回
-        if (!flag) {
-            return;
-        }
-        // 找到所有侦察兵
-        let scout = _.find(Game.creeps, i => i.memory.role == "scout");
-        // 若 scout 不存在,则新生产一个 scout
-        if (scout == undefined) {
-            let spawn = room.find(FIND_MY_SPAWNS)[0];
-            spawn.spawnCreep([MOVE], "scout", {
-                memory: { role: 'scout' },
-                directions: [TOP_LEFT, LEFT, BOTTOM_LEFT],
+            creep.moveTo(controller, {
+                maxOps: 1000,
             });
             return;
         }
-        // 移动到旗子处
-        scout.moveTo(flag.pos);
+        if (controller.sign == undefined
+            || controller.sign.username != creep.owner.username) {
+            creep.signController(controller, "This is my outer room");
+        }
         return;
-    },
-    delayHarvest: function (room) {
-        if (Memory.delayHarvest != undefined
-            && Memory.delayHarvest.room == room.name) {
-            return true;
+    };
+    /**
+     * 守护者执行守护外矿任务
+     * @param creep 守护者对象
+     */
+    const runOuterDefender = function (creep) {
+        if (creep.pos.roomName != creep.memory.outerRoom) {
+            creep.moveTo(new RoomPosition(25, 25, creep.memory.outerRoom), {
+                maxOps: 1000,
+            });
+            return;
         }
-        // 若外矿房间内有敌对 creep, 则延迟采矿
-        let enemy = room.find(FIND_HOSTILE_CREEPS)[0];
-        if (enemy != undefined) {
-            Memory.delayHarvest = { room: room.name, time: 1500 };
-            return true;
+        let room = Game.rooms[creep.memory.outerRoom];
+        let enemies = _.filter(room.find(FIND_HOSTILE_CREEPS), i => i.body.find(i => i.type == ATTACK
+            || i.type == RANGED_ATTACK
+            || i.type == HEAL));
+        if (enemies.length == 0) {
+            creep.moveTo(creep.memory.flag.pos.x, creep.memory.flag.pos.y, {
+                maxOps: 1000,
+            });
+            return;
         }
-        return false;
-    },
+        let target = creep.pos.findClosestByRange(enemies);
+        if (creep.attack(target) == ERR_NOT_IN_RANGE) {
+            creep.moveTo(target, {
+                maxOps: 1000,
+            });
+        }
+        return;
+    };
+    const runOuterBuilder = function (creep) {
+        if (creep.pos.roomName == creep.memory.bornRoom) {
+            if (creep.store[RESOURCE_ENERGY] == 0) {
+                let room = Game.rooms[creep.memory.bornRoom];
+                let result = creep.withdraw(room.storage, RESOURCE_ENERGY);
+                if (result == ERR_NOT_IN_RANGE) {
+                    creep.moveTo(room.storage);
+                }
+                return;
+            }
+        }
+        if (creep.pos.roomName != creep.memory.outerRoom) {
+            creep.moveTo(new RoomPosition(25, 25, creep.memory.outerRoom), {
+                maxOps: 1000,
+            });
+            return;
+        }
+        let room = Game.rooms[creep.pos.roomName];
+        if (creep.store[RESOURCE_ENERGY] == 0) {
+            let container = room.find(FIND_STRUCTURES, {
+                filter: s => s.structureType == STRUCTURE_CONTAINER
+                    && s.store[RESOURCE_ENERGY] >= creep.store.getFreeCapacity()
+            })[0];
+            // 获取 source 旁边掉落的资源对象
+            let resource = room.find(FIND_DROPPED_RESOURCES, {
+                filter: s => s.resourceType == RESOURCE_ENERGY
+                    && s.amount >= creep.store.getFreeCapacity()
+            })[0];
+            if (container != undefined) {
+                if (creep.withdraw(container, RESOURCE_ENERGY) == ERR_NOT_IN_RANGE) {
+                    creep.moveTo(container);
+                }
+            }
+            else if (resource != undefined) {
+                if (creep.pickup(resource) == ERR_NOT_IN_RANGE) {
+                    creep.moveTo(resource);
+                }
+            }
+            return;
+        }
+        let sites = room.find(FIND_CONSTRUCTION_SITES);
+        let target = creep.pos.findClosestByRange(sites);
+        if (target != undefined) {
+            if (creep.build(target) == ERR_NOT_IN_RANGE) {
+                creep.moveTo(target);
+            }
+            return;
+        }
+        let repairs = creep.pos.findInRange(FIND_STRUCTURES, 1).filter(i => i.hits < i.hitsMax);
+        if (repairs[0] != undefined) {
+            creep.repair(repairs[0]);
+            return;
+        }
+        let repairTargets = _.filter(room.find(FIND_STRUCTURES), i => i.hits < i.hitsMax);
+        let repairTarget = creep.pos.findClosestByRange(repairTargets);
+        if (repairTarget != undefined) {
+            if (creep.repair(repairTarget) == ERR_NOT_IN_RANGE) {
+                creep.moveTo(repairTarget);
+            }
+        }
+        else {
+            creep.suicide();
+            if (Memory.delayTime == undefined) {
+                Memory.delayTime = {};
+            }
+            if (Memory.delayTime['outerBuilder' + room.name] == undefined) {
+                Memory.delayTime['outerBuilder' + room.name] = {
+                    time: 0,
+                    delay: 0,
+                };
+            }
+            Memory.delayTime['outerBuilder' + room.name] = {
+                time: Game.time,
+                delay: 2000,
+            };
+        }
+        return;
+    };
+    run();
 };
 
 const Withdraw = {
@@ -562,7 +894,8 @@ const Withdraw = {
             && i.store["energy"] >= amount);
         let links = _.filter(room.find(FIND_STRUCTURES), (i) => i.structureType == "link"
             && i.store.energy >= amount
-            && i.pos.findInRange(FIND_SOURCES, 2).length == 0);
+            && i.pos.findInRange(FIND_SOURCES, 2).length == 0
+            && i.pos.getRangeTo(room.find(FIND_MY_SPAWNS)[0]) != 1);
         let storage = room.storage;
         let targets = [...containers, ...links];
         if (storage != undefined) {
@@ -595,102 +928,95 @@ const Withdraw = {
     }
 };
 
-const Builder = {
-    run: function (builder, room) {
-        if (MyMemory.upateWorking(builder, "energy")) {
-            this.goBuild(builder, room);
-        }
-        else {
-            Withdraw.energy(builder, room);
-        }
-    },
-    goBuild: function (creep, room) {
-        let sites = room.find(FIND_CONSTRUCTION_SITES);
-        if (creep.build(sites[0]) == ERR_NOT_IN_RANGE) {
-            creep.moveTo(sites[0]);
-        }
-        return;
-    },
-    // 当没有工地时，自动回去 recycle
-    goRecycle: function (creep, room) {
-        let sites = room.find(FIND_CONSTRUCTION_SITES);
-        if (sites.length == 0) {
-            let spawn = room.find(FIND_MY_SPAWNS)[0];
-            if (spawn.recycleCreep(creep) == ERR_NOT_IN_RANGE) {
-                creep.moveTo(spawn);
-            }
-            return;
-        }
-    },
-};
-
-const SpawnCreep = {
-    newList: [{}],
-    newCreep: function (room) {
-        let spawns = room.find(FIND_MY_SPAWNS);
-        //if (this.recycle(room)) {
-        //return;
-        //}
-        for (let i = 0; i < spawns.length; ++i) {
-            if (i >= this.newList.length) {
-                break;
-            }
-            if (this.newList[i].role == undefined) {
-                continue;
-            }
-            let name = this.newList[i].role + Game.time;
-            let role = this.newList[i].role;
-            if (role == "harvester" || role == "worker") {
-                name = (Game.time + this.newList[i].opt);
-            }
-            spawns[i].spawnCreep(this.newList[i].bodys, name, { memory: { role: this.newList[i].role },
-                directions: [TOP_LEFT, LEFT, BOTTOM_LEFT],
-            });
-        }
-        this.newList = [];
-        return;
-    },
-};
-
-const Build = {
+const build = {
     run: function (room) {
         let sites = room.find(FIND_CONSTRUCTION_SITES);
         let builders = _.filter(Game.creeps, (creep) => creep.memory.role
             == "builder");
         if (sites.length == 0) {
             for (let i = 0; i < builders.length; ++i) {
-                Builder.goRecycle(builders[i], room);
+                this.goRecycle(builders[i], room);
             }
-            return 0;
-        }
-        if (builders.length < 1) {
-            let newListPush = {
-                role: "builder",
-                bodys: this.returnBodys(room),
-            };
-            SpawnCreep.newList.push(newListPush);
-        }
-        if (builders.length == 0) {
             return;
         }
+        if (builders.length < 1) {
+            this.newBuilder(room);
+        }
         for (let i = 0; i < builders.length; ++i) {
-            Builder.run(builders[i], room);
+            this.runBuilder(builders[i], room);
         }
         return;
     },
-    returnBodys: function (room) {
+    /**
+     * 生产 builder
+     * @param room 生产 creep 的房间
+     */
+    newBuilder: function (room) {
+        let spawn = returnFreeSpawn(room);
+        if (spawn == undefined) {
+            return;
+        }
+        spawn.spawnCreep(this.createBuilderBody(room), this.createBuilderName(room), {
+            memory: { role: 'builder', bornRoom: room.name },
+            directions: [TOP_LEFT, LEFT, BOTTOM_LEFT],
+        });
+        return;
+    },
+    /**
+     * 返回 builder 的名字
+     * @param room 生产 creep 的房间
+     * @returns {string} builder 的名字
+     */
+    createBuilderName: function (room) {
+        return 'builder' + room.name;
+    },
+    /**
+     * 返回 builder 的身体部件数组
+     * @param room 生产 builder 的房间
+     * @returns {BodyPartConstant[]} builder 的身体部件数组
+     */
+    createBuilderBody: function (room) {
         let energy = room.energyAvailable;
         let bodys = [WORK, CARRY, MOVE];
         const consume = 200;
-        let times = (energy - consume) / consume;
-        for (let i = 1; i < times; ++i) {
+        let times = Math.floor((energy - consume) / consume);
+        for (let i = 0; i < times; ++i) {
             bodys.push(WORK, CARRY, MOVE);
         }
         return bodys;
-    }
+    },
+    /**
+     * builder 执行 建造任务
+     * @param creep builder 对象
+     * @param room 执行任务的房间
+     */
+    runBuilder: function (creep, room) {
+        if (MyMemory.upateWorking(creep, "energy")) {
+            let sites = room.find(FIND_CONSTRUCTION_SITES);
+            if (creep.build(sites[0]) == ERR_NOT_IN_RANGE) {
+                creep.moveTo(sites[0]);
+            }
+        }
+        else {
+            Withdraw.energy(creep, room);
+        }
+        return;
+    },
+    /**
+     * 当没有工地时，自动回去找到 spawn 执行 recycle
+     * @param creep builder 对象
+     * @param room 执行 recycle 的房间
+     */
+    goRecycle: function (creep, room) {
+        let spawn = room.find(FIND_MY_SPAWNS)[0];
+        if (spawn.recycleCreep(creep) == ERR_NOT_IN_RANGE) {
+            creep.moveTo(spawn);
+        }
+        return;
+    },
 };
 
-const Tower = {
+const towers = {
     repair: function (target, room) {
         let towers = _.filter(room.find(FIND_STRUCTURES), (i) => i.structureType == "tower");
         let enemy = room.find(FIND_HOSTILE_CREEPS);
@@ -727,13 +1053,40 @@ const Defend = {
         if (enemy[0] == undefined) {
             return;
         }
-        if (enemy.find(i => i.owner.username == "PacifistBot") != undefined) {
+        let PBCreep = enemy.find(i => i.owner.username == "PacifistBot"
+            && i.body.find(i => i.type == ATTACK || i.type == RANGED_ATTACK));
+        if (PBCreep != undefined) {
             let controller = room.controller;
             controller.activateSafeMode();
             Game.notify("SF ON");
         }
-        Tower.defend(room);
+        towers.defend(room);
     }
+};
+
+const SpawnCreep = {
+    newList: [{}],
+    newCreep: function (room) {
+        let spawns = room.find(FIND_MY_SPAWNS);
+        for (let i = 0; i < spawns.length; ++i) {
+            if (i >= this.newList.length) {
+                break;
+            }
+            if (this.newList[i].role == undefined) {
+                continue;
+            }
+            let name = this.newList[i].role + Game.time;
+            let role = this.newList[i].role;
+            if (role == "harvester" || role == "worker") {
+                name = (Game.time + this.newList[i].opt);
+            }
+            spawns[i].spawnCreep(this.newList[i].bodys, name, { memory: { role: this.newList[i].role, bornRoom: spawns[i].room.name },
+                directions: [TOP_LEFT, LEFT, BOTTOM_LEFT],
+            });
+        }
+        this.newList = [];
+        return;
+    },
 };
 
 const FastUpgrade = {
@@ -879,224 +1232,156 @@ const FastUpgrade = {
     },
 };
 
-const Harvester = {
-    run: function (source, room, harvester) {
-        if (this.transferExtension(harvester, room)) {
-            return;
-        }
-        else {
-            this.harvestEnergy(harvester, source, room);
-        }
-        return;
-    },
-    harvestEnergy: function (creep, target, room) {
-        let resouces = creep.pos.findInRange(FIND_DROPPED_RESOURCES, 1).filter(i => i.resourceType == "energy");
-        let tombstones = creep.pos.findInRange(FIND_TOMBSTONES, 1).filter(i => i.store["energy"] > 0);
-        if (resouces.length != 0) {
-            creep.pickup(resouces[0]);
-        }
-        else {
-            if (tombstones.length != 0) {
-                creep.withdraw(tombstones[0], "energy");
-            }
-        }
-        if (creep.store.getFreeCapacity() < creep.getActiveBodyparts(WORK) * 4) {
-            this.transferEnergy(creep, room);
-            if (creep.store.getFreeCapacity() < creep.getActiveBodyparts(WORK)
-                * 2) {
-                this.transferEnergy(creep, room);
-                return;
-            }
-        }
-        if (creep.harvest(target) == ERR_NOT_IN_RANGE) {
-            creep.moveTo(target);
-        }
-        return;
-    },
-    transferEnergy: function (creep, room) {
-        let energy = creep.store["energy"];
-        if (energy == 0) {
-            return;
-        }
-        let sites = room.find(FIND_CONSTRUCTION_SITES);
-        let site = creep.pos.findInRange(sites, 1)[0];
-        if (site != undefined) {
-            creep.build(site);
-            return;
-        }
-        let extensions = _.filter(room.find(FIND_STRUCTURES), (i) => i.structureType == "extension"
-            && i.store.getFreeCapacity("energy") > 0
-            && creep.pos.getRangeTo(i) == 1);
-        if (extensions[0] != undefined) {
-            creep.transfer(extensions[0], "energy");
-            return;
-        }
-        let link = creep.pos.findInRange(FIND_STRUCTURES, 1).filter(i => i.structureType == "link")[0];
-        if (link != undefined) {
-            creep.transfer(link, "energy");
-            return;
-        }
-        let containers = _.filter(room.find(FIND_STRUCTURES), (i) => i.structureType == "container"
-            && i.store.getFreeCapacity() > 0
-            && creep.pos.getRangeTo(i) <= 1
-            && i.pos.findInRange(FIND_MINERALS, 1).length == 0);
-        if (containers[0] != undefined) {
-            creep.transfer(containers[0], "energy");
-            return;
-        }
-        let container = creep.pos.findInRange(FIND_STRUCTURES, 1).filter(i => i.structureType == "container")[0];
-        if (container != undefined || link != undefined) {
-            return;
-        }
-        let spawn = room.find(FIND_MY_SPAWNS)[0];
-        if (creep.transfer(spawn, "energy") == ERR_NOT_IN_RANGE) {
-            creep.moveTo(spawn);
-        }
-        return;
-    },
-    transferExtension: function (creep, room) {
-        if (creep.store["energy"] == creep.store.getCapacity()) {
-            return false;
-        }
-        let containers = _.filter(room.find(FIND_STRUCTURES), (i) => i.structureType == "container"
-            && creep.pos.getRangeTo(i) <= 1);
-        if (containers[0] == undefined || containers[0].store["energy"] == 0) {
-            return false;
-        }
-        let extensions = _.filter(room.find(FIND_STRUCTURES), (i) => i.structureType == "extension"
-            && i.store.getFreeCapacity("energy") > 0
-            && creep.pos.getRangeTo(i) == 1);
-        if (extensions[0] != undefined) {
-            creep.withdraw(containers[0], "energy");
-            return true;
-        }
-        let links = _.filter(room.find(FIND_STRUCTURES), (i) => i.structureType == "link"
-            && i.store.getFreeCapacity("energy") > 0
-            && creep.pos.getRangeTo(i) == 1);
-        if (links[0] != undefined) {
-            creep.withdraw(containers[0], "energy");
-            return true;
-        }
-        return false;
-    }
-};
-
-const Mineraler = {
-    run: function (creep, room) {
-        let mineral = room.find(FIND_MINERALS)[0];
-        let container = mineral.pos.findInRange(room.find(FIND_STRUCTURES), 1).filter(i => i.structureType == "container")[0];
-        if (creep.harvest(mineral) == ERR_NOT_IN_RANGE) {
-            creep.moveTo(container);
-        }
-        if (creep.store.getCapacity() - creep.store.getUsedCapacity()
-            < creep.getActiveBodyparts(WORK)) {
-            let resource = Object.keys(creep.store)[0];
-            let container = creep.pos.findInRange(FIND_STRUCTURES, 1).filter(i => i.structureType == "container")[0];
-            if (container != undefined) {
-                creep.transfer(container, resource);
-                return;
-            }
-            else if (room.storage != undefined) {
-                if (creep.transfer(room.storage, resource) == ERR_NOT_IN_RANGE) {
-                    creep.moveTo(room.storage);
-                }
-                return;
-            }
-        }
-        return;
-    },
-};
-
-const Harvest = {
+const harvest = {
+    /**
+     * 执行采集任务
+     * @param room 执行采集任务的房间
+     */
     run: function (room) {
         let sources = room.find(FIND_SOURCES);
         let harvesters = _.filter(room.find(FIND_MY_CREEPS), (creep) => creep.memory.role == "harvester");
         if (harvesters.length < sources.length) {
-            let sourceId = sources[0].id;
             for (let i = 0; i < sources.length; ++i) {
                 let id = sources[i].id;
-                if (harvesters.find(creep => creep.name.indexOf(id) != -1)) {
-                    continue;
-                }
-                else {
-                    sourceId = id;
+                if (!harvesters.find(creep => creep.memory.source.id == id)) {
+                    this.newHarvester(room, id);
                     break;
                 }
             }
-            let newListPush = {
-                role: "harvester",
-                bodys: this.returnBodys(room, "harvester"),
-                opt: sourceId,
-            };
-            SpawnCreep.newList.push(newListPush);
         }
-        if (harvesters.length == 0) {
-            return;
+        for (let i = 0; i < harvesters.length; ++i) {
+            this.runHarvester(harvesters[i]);
         }
-        for (let i = 0; i < sources.length; ++i) {
-            let id = sources[i].id;
-            let harvester = harvesters.find(creep => creep.name.indexOf(id) != -1);
-            if (harvester != undefined) {
-                Harvester.run(sources[i], room, harvester);
-            }
-        }
-        let extractor = _.find(room.find(FIND_STRUCTURES), i => i.structureType == "extractor");
-        if (extractor == undefined) {
-            return;
-        }
-        let mineraler = _.filter(room.find(FIND_MY_CREEPS), i => i.memory.role == "mineraler");
-        if (mineraler.length < 1) {
-            let mineral = room.find(FIND_MINERALS)[0];
-            if (mineral == undefined || mineral.mineralAmount == 0) {
-                return;
-            }
-            let newListPush = {
-                role: "mineraler",
-                bodys: this.returnBodys(room, "mineraler"),
-            };
-            SpawnCreep.newList.push(newListPush);
-            return;
-        }
-        Mineraler.run(mineraler[0], room);
         return;
     },
-    returnBodys: function (room, role) {
+    /**
+     * 返回 harvester 的名字
+     * @param room 生产 harvester 的房间
+     * @param sourceId 目标能量矿的 ID
+     * @returns {string} harvester 的名字
+     */
+    createHarvesterName: function (room) {
+        return 'harvester' + room.name + '_' + Game.time % 10;
+    },
+    /**
+     * 返回 harvester 的身体部件数组
+     * @param room 生产 harvester 的房间
+     * @returns {BodyPartConstant[]} harvester 的身体部件数组
+     */
+    createHarvesterBody: function (room) {
         let energy = room.energyAvailable;
         let bodys = [WORK, WORK, CARRY, MOVE];
-        if (role == "mineraler") {
-            for (let i = 0; i < 10; ++i) {
-                bodys[i] = WORK;
-            }
-            bodys.push(CARRY, MOVE, MOVE, MOVE, MOVE, MOVE);
-            return bodys;
-        }
-        if (energy < 300) {
-            bodys = [WORK, CARRY, MOVE, MOVE];
-            return bodys;
-        }
-        else if (energy >= 800) {
-            bodys = [WORK, WORK, WORK, WORK, WORK, WORK, CARRY, MOVE, MOVE, MOVE];
-            return bodys;
-        }
         const consume = 300;
         let times = Math.floor((energy - consume) / 250);
+        if (times >= 3)
+            times = 3;
         for (let i = 0; i < times; ++i) {
             bodys.push(WORK, WORK, MOVE);
         }
         return bodys;
     },
-};
-
-const Labs = {
-    runReaction: function (room) {
-        let labs = _.filter(room.find(FIND_STRUCTURES), i => i.structureType == "lab");
-        let noCdLab = _.find(labs, i => i.cooldown == 0);
-        if (noCdLab == undefined) {
+    /**
+     * 生产一个新的 harvester
+     * @param room 执行采集任务的房间对象
+     * @param sourceId 目标能量矿的 ID
+     */
+    newHarvester: function (room, sourceId) {
+        let spawn = returnFreeSpawn(room);
+        if (spawn == undefined) {
             return;
         }
-        labs.splice(labs.indexOf(noCdLab), 1);
-        noCdLab.runReaction(labs[0], labs[1]);
+        let source = Game.getObjectById(sourceId);
+        spawn.spawnCreep(this.createHarvesterBody(room), this.createHarvesterName(room), { memory: {
+                role: 'harvester',
+                bornRoom: room.name,
+                source: { id: sourceId, pos: source.pos },
+            },
+            directions: [TOP_LEFT, LEFT, BOTTOM_LEFT], });
         return;
+    },
+    /**
+     * harvester 执行采集任务
+     * @param creep harvester 对象
+     * @param room 执行采集任务的房间
+     */
+    runHarvester: function (creep) {
+        let source = Game.getObjectById(creep.memory.source.id);
+        if (source == undefined) {
+            return;
+        }
+        if (creep.pos.getRangeTo(source) != 1) {
+            creep.moveTo(source, { maxOps: 100, });
+            return;
+        }
+        if (this.transferExtension(creep)) {
+            return;
+        }
+        else if (this.transferOut(creep)) {
+            creep.harvest(source);
+            return;
+        }
+        if (creep.store.getFreeCapacity() >= creep.getActiveBodyparts(WORK) * 2) {
+            creep.harvest(source);
+        }
+        return;
+    },
+    /**
+     * 对身边一格范围内的 extension 运输能量
+     * @param creep harvester 对象
+     * @returns {boolean} 是否成功执行运输任务
+     */
+    transferExtension: function (creep) {
+        let extensions = _.filter(creep.pos.findInRange(FIND_STRUCTURES, 1), i => i.structureType == STRUCTURE_EXTENSION
+            && i.store.getFreeCapacity(RESOURCE_ENERGY) > 0);
+        if (extensions.length == 0) {
+            return false;
+        }
+        if (creep.store[RESOURCE_ENERGY] < creep.store.getCapacity()) {
+            return this.withdrawEnergy(creep) ? true : false;
+        }
+        creep.transfer(extensions[0], RESOURCE_ENERGY);
+        return true;
+    },
+    /**
+     * harvester 从容器获取能量
+     * @param creep harvseter 对象
+     * @returns {boolean} 是否成功获取能量
+     */
+    withdrawEnergy: function (creep) {
+        let container = _.find(creep.pos.findInRange(FIND_STRUCTURES, 1), i => i.structureType == STRUCTURE_CONTAINER
+            && i.store[RESOURCE_ENERGY] >= 50);
+        if (container != undefined) {
+            creep.withdraw(container, RESOURCE_ENERGY);
+            return true;
+        }
+        let link = _.find(creep.pos.findInRange(FIND_STRUCTURES, 1), i => i.structureType == STRUCTURE_LINK
+            && i.store[RESOURCE_ENERGY] >= 50);
+        if (link != undefined) {
+            creep.withdraw(link, RESOURCE_ENERGY);
+            return true;
+        }
+        return false;
+    },
+    /**
+     * 将 harvester 储存的能量运输至容器中
+     * @param creep harvester 对象
+     * @returns {boolean} 是否成功执行运输任务
+     */
+    transferOut: function (creep) {
+        if (creep.store.getFreeCapacity() >= creep.getActiveBodyparts(WORK) * 4) {
+            return false;
+        }
+        let link = _.find(creep.pos.findInRange(FIND_STRUCTURES, 1), i => i.structureType == STRUCTURE_LINK);
+        if (link != undefined) {
+            let result = creep.transfer(link, RESOURCE_ENERGY);
+            return result == 0 ? true : false;
+        }
+        let container = _.find(creep.pos.findInRange(FIND_STRUCTURES, 1), i => i.structureType == STRUCTURE_CONTAINER);
+        if (container != undefined) {
+            let result = creep.transfer(container, RESOURCE_ENERGY);
+            return result == 0 ? true : false;
+        }
+        return false;
     },
 };
 
@@ -1128,15 +1413,15 @@ const Carrier = {
         if (amount == 0) {
             return;
         }
-        let resouce = room.find(FIND_DROPPED_RESOURCES).filter(i => i.resourceType == "energy" && i.amount >= 500);
-        let tombstone = room.find(FIND_TOMBSTONES).filter(i => i.store["energy"] >= 500);
         let containers = _.filter(room.find(FIND_STRUCTURES), (i) => i.structureType == "container"
             && (i.store["energy"] >= amount || i.store["energy"] >= 500)
             && i.pos.findInRange(FIND_SOURCES, 2)[0] != undefined);
         let links = _.filter(room.find(FIND_STRUCTURES), (i) => i.structureType == "link"
             && i.store["energy"] >= 100
-            && i.pos.findInRange(FIND_SOURCES, 2).length == 0);
-        let targets = [...resouce, ...tombstone, ...containers, ...links];
+            && i.pos.findInRange(FIND_SOURCES, 2).length == 0
+            && i.pos.getRangeTo(room.controller) > 3
+            && i.pos.getRangeTo(room.find(FIND_MY_SPAWNS)[0]) != 1);
+        let targets = [...containers, ...links];
         if (room.terminal != undefined) {
             if (room.terminal.store["energy"] >= 100000) {
                 targets.push(room.terminal);
@@ -1169,10 +1454,11 @@ const Carrier = {
     }
 };
 
-const Link = {
+const links = {
     transferEnergy: function (room) {
         let links = _.filter(room.find(FIND_STRUCTURES), i => i.structureType == "link");
-        let link = _.find(links, i => i.pos.findInRange(room.find(FIND_SOURCES), 2).length == 0);
+        let link = _.find(links, i => i.pos.findInRange(room.find(FIND_SOURCES), 2).length == 0
+            && i.pos.getRangeTo(room.find(FIND_MY_SPAWNS)[0]) != 1);
         if (link == undefined) {
             return;
         }
@@ -1361,40 +1647,30 @@ const MineralCarrier = {
     },
 };
 
-const Spawns = {
-    /**
-     * 判断该房间是否有空闲的 spawn
-     * @param room
-     * @returns
-     */
-    isFreeSpawn: function (room) {
-        let spawn = _.find(room.find(FIND_MY_SPAWNS), i => i.spawning == null);
-        if (spawn == undefined) {
-            return false;
-        }
-        else {
-            return true;
-        }
-    },
-};
-
 const Transfer = {
     run: function (room, costs) {
-        Link.transferEnergy(room);
+        links.transferEnergy(room);
         let carriers = _.filter(Game.creeps, (creep) => creep.memory.role
             == "carrier");
         if (carriers.length < 2) {
             this.newCarrier(room);
         }
+        let spawnPos = room.find(FIND_MY_SPAWNS)[0].pos;
+        let lookForCenterContainers = _.filter(room.lookForAtArea(LOOK_STRUCTURES, spawnPos.y - 2, spawnPos.x, spawnPos.y + 2, spawnPos.x + 2, true), i => i.structure.structureType == STRUCTURE_EXTENSION);
+        let centerContainers = lookForCenterContainers.map(i => i.structure.id);
         let transferTargets = _.filter(room.find(FIND_STRUCTURES), (i) => "store" in i
-            && i.store["energy"] < i.store.getCapacity("energy") && (i.structureType == "spawn" || (i.structureType == "extension"
-            && i.pos.findInRange(FIND_SOURCES, 2).length == 0)
-            || i.structureType == "tower"
-            || (i.structureType == "terminal" && i.store["energy"] < 50000)
-            || i.structureType == "lab"
-            || (i.structureType == "container"
-                && i.pos.findInRange(FIND_SOURCES, 2).length == 0
-                && i.pos.findInRange(FIND_MINERALS, 1).length == 0)));
+            && i.store["energy"] < i.store.getCapacity("energy")
+            && (i.structureType == "spawn"
+                || (i.structureType == "extension"
+                    && i.pos.findInRange(FIND_SOURCES, 2).length == 0
+                    && !centerContainers.includes(i.id))
+                || (i.structureType == "tower" && i.store[RESOURCE_ENERGY] < 600)
+                || (i.structureType == "terminal" && i.store["energy"] < 50000)
+                || i.structureType == "lab"
+                || (i.structureType == "container"
+                    && i.store[RESOURCE_ENERGY] < 1500
+                    && i.pos.findInRange(FIND_SOURCES, 2).length == 0
+                    && i.pos.findInRange(FIND_MINERALS, 1).length == 0)));
         if (transferTargets.length == 0) {
             if (room.storage != undefined) {
                 transferTargets.push(room.storage);
@@ -1416,7 +1692,9 @@ const Transfer = {
                 && transferTargets[0] != undefined) {
                 let target = carrier.pos.
                     findClosestByRange(transferTargets);
-                carrier.say(target.structureType);
+                if (target != null) {
+                    carrier.say(target.structureType);
+                }
                 if (!unsplice.includes(target.structureType)) {
                     transferTargets.splice(transferTargets.indexOf(target), 1);
                 }
@@ -1436,7 +1714,7 @@ const Transfer = {
         MineralCarrier.run(room);
     },
     newCarrier: function (room) {
-        if (Spawns.isFreeSpawn(room) == false) {
+        if (!returnFreeSpawn(room)) {
             return;
         }
         let newListPush = {
@@ -1448,14 +1726,14 @@ const Transfer = {
     },
     returnBodys: function (room) {
         let energy = room.energyAvailable;
-        let bodys = [CARRY, CARRY, MOVE];
         if (energy <= 300) {
-            bodys = [CARRY, MOVE];
+            return [CARRY, MOVE];
         }
-        const consume = 150;
-        let times = (energy - consume) / 150;
-        for (let i = 1; i < Math.trunc(times); ++i) {
-            bodys.push(CARRY, CARRY, MOVE);
+        let bodys = [];
+        let carryNum = Math.floor(energy / 100) / 2;
+        carryNum = carryNum >= 12 ? 12 : carryNum;
+        for (let i = 0; i < carryNum; ++i) {
+            bodys.push(CARRY, MOVE);
         }
         return bodys;
     },
@@ -1531,9 +1809,9 @@ const Upgrade = {
             return bodys;
         }
         const consume = 200;
-        let times = Math.floor((energy - consume) / 200);
+        let times = Math.floor((energy - consume) / 250);
         for (let i = 0; i < times; ++i) {
-            bodys.push(WORK, CARRY, MOVE);
+            bodys.push(WORK, WORK, MOVE);
         }
         return bodys;
     },
@@ -1575,7 +1853,7 @@ const RoomVisual = {
             if (spawning != undefined) {
                 room.visual.text(spawning.name, pos.x + 1, pos.y, {
                     align: "left",
-                    color: "green"
+                    color: "green",
                 });
             }
         }
@@ -1585,35 +1863,27 @@ const RoomVisual = {
 
 const Repair = {
     run: function (room) {
-        let towers = _.filter(room.find(FIND_STRUCTURES), (i) => i.structureType == "tower");
-        if (towers.length > 0) {
+        let roomTowers = _.filter(room.find(FIND_STRUCTURES), (i) => i.structureType == "tower");
+        if (roomTowers.length > 0) {
+            let creep = _.find(room.find(FIND_MY_CREEPS), i => i.hits < i.hitsMax);
+            if (creep != undefined) {
+                roomTowers[0].heal(creep);
+                return;
+            }
             let structures = room.find(FIND_STRUCTURES).filter(i => i.hits < i.hitsMax
                 && i.structureType != STRUCTURE_WALL
                 && i.structureType != STRUCTURE_RAMPART
                 || (i.structureType == STRUCTURE_RAMPART && i.hits < 1000));
             structures.sort((a, b) => a.hits - b.hits);
-            for (let i = 0; i < structures.length && i < towers.length; ++i) {
-                Tower.repair(structures[i], room);
+            for (let i = 0; i < structures.length && i < roomTowers.length; ++i) {
+                towers.repair(structures[i], room);
             }
         }
         return;
     },
-    returnBodys: function (room) {
-        let energy = room.energyAvailable;
-        let bodys = [WORK, CARRY, MOVE];
-        if (energy < 300) {
-            return bodys;
-        }
-        const consume = 200;
-        let times = (energy - consume) / 200;
-        for (let i = 0; i < Math.trunc(times); ++i) {
-            bodys.push(WORK, CARRY, MOVE);
-        }
-        return bodys;
-    },
 };
 
-const centerTransferer = {
+const centerTransfer = {
     /**
      * 执行中央的运输任务
      * @param room 执行的房间
@@ -1633,21 +1903,32 @@ const centerTransferer = {
         for (let i = 0; i < centerTransferer.length; ++i) {
             this.runCenterTransferer(centerTransferer[i], room);
         }
+        let link = _.find(room.find(FIND_STRUCTURES), i => i.structureType == STRUCTURE_LINK
+            && i.pos.getRangeTo(spawn) == 1);
+        if (link == undefined) {
+            return;
+        }
+        this.runCenterLink(link, room);
         return;
     },
     /**
      * 返回中央运输爬的身体
      * @returns {BodyPartConstant[]} 运输爬的身体
      */
-    createTransfererBody: function () {
-        return [CARRY];
+    createTransfererBody: function (room) {
+        let carryNum = room.controller.level - 3;
+        let bodys = [];
+        for (let i = 0; i < carryNum; ++i) {
+            bodys.push(CARRY);
+        }
+        return bodys;
     },
     /**
      * 返回中央运输爬的名字
      * @returns {string} 运输爬的名字
      */
-    createTransfererName: function () {
-        return "centerTransferer" + Game.time;
+    createTransfererName: function (room) {
+        return "centerTransferer" + room.name + '_' + Game.time % 10;
     },
     /**
      * 检查是否需要生产新的中央运输爬
@@ -1657,9 +1938,15 @@ const centerTransferer = {
     checkSpawnCreep: function (spawn, room) {
         let centerTransferer = _.filter(room.find(FIND_MY_CREEPS), i => i.memory.role == "centerTransferer");
         if (centerTransferer.length < 2) {
-            let name = this.createTransfererName();
-            let body = this.createTransfererBody();
-            let memory = { role: 'centerTransferer' };
+            if (!spawns.isFreeFirstSpawn(room, 'centerTransferer')) {
+                return;
+            }
+            let name = this.createTransfererName(room);
+            let body = this.createTransfererBody(room);
+            let memory = {
+                role: 'centerTransferer',
+                bornRoom: room.name,
+            };
             spawn.spawnCreep(body, name, {
                 memory: memory,
                 directions: [TOP_RIGHT, BOTTOM_RIGHT],
@@ -1673,11 +1960,10 @@ const centerTransferer = {
      * @param room 执行任务的房间
      */
     runCenterTransferer: function (creep, room) {
-        if (creep.store.getFreeCapacity() > 0) {
+        if (creep.store[RESOURCE_ENERGY] == 0) {
             let targets = creep.pos.findInRange(FIND_STRUCTURES, 1).filter(i => "store" in i
                 && i.store[RESOURCE_ENERGY] > 0
                 && (i.structureType == STRUCTURE_CONTAINER
-                    || i.structureType == STRUCTURE_LINK
                     || i.structureType == STRUCTURE_STORAGE
                     || i.structureType == STRUCTURE_TERMINAL));
             creep.withdraw(targets[0], RESOURCE_ENERGY);
@@ -1688,6 +1974,25 @@ const centerTransferer = {
                 && (i.structureType == STRUCTURE_EXTENSION
                     || i.structureType == STRUCTURE_SPAWN));
             creep.transfer(targets[0], RESOURCE_ENERGY);
+        }
+        return;
+    },
+    /**
+     * 将中央 Link 的能量传送至升级 Link
+     * @param link 中央运输 Link
+     * @param room 执行运输任务的房间
+     */
+    runCenterLink: function (link, room) {
+        if (link.store[RESOURCE_ENERGY] < 400) {
+            return;
+        }
+        let upgradeLink = _.find(room.find(FIND_STRUCTURES), i => i.structureType == STRUCTURE_LINK
+            && i.pos.getRangeTo(room.controller) <= 3);
+        if (upgradeLink == undefined) {
+            return;
+        }
+        if (upgradeLink.store[RESOURCE_ENERGY] <= 400) {
+            link.transferEnergy(upgradeLink);
         }
         return;
     },
@@ -1704,6 +2009,7 @@ const RoomMaintain = {
             if (room.controller != undefined) {
                 level = room.controller.level;
             }
+            centerTransfer.run(room);
             if (level < 3) {
                 FastUpgrade.run(room);
                 Defend.run(room);
@@ -1711,17 +2017,16 @@ const RoomMaintain = {
             }
             RoomVisual.run(roomName);
             let costs = this.roomCallBack(room);
-            Harvest.run(room);
-            centerTransferer.run(room);
+            harvest.run(room);
             Transfer.run(room, costs);
-            if (Build.run(room) == 0) {
-                Upgrade.run(room, 1);
+            build.run(room);
+            if (room.find(FIND_CONSTRUCTION_SITES).length == 0) {
+                Upgrade.run(room, 3);
             }
             else {
                 Upgrade.run(room);
             }
             Repair.run(room);
-            Labs.runReaction(room);
             Defend.run(room);
         }
     },
@@ -1769,7 +2074,10 @@ const loop = function () {
     // 运营每一个房间
     RoomMaintain.run();
     let room = Game.rooms["E41N49"];
-    outerSource.run(room);
+    outerSource({
+        room: room,
+        returnFreeSpawn: returnFreeSpawn,
+    });
     for (let roomName in Game.rooms) {
         let room = Game.rooms[roomName];
         if (room.controller == undefined || room.controller.my == false) {

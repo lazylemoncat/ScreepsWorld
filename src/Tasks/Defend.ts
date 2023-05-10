@@ -1,4 +1,4 @@
-import { Tower } from "../structures/tower";
+import { towers } from "../structures/towers";
 
 export const Defend = {
   run: function (room: Room) {
@@ -6,11 +6,15 @@ export const Defend = {
     if (enemy[0] == undefined) {
       return;
     }
-    if (enemy.find(i => i.owner.username == "PacifistBot") != undefined) {
+    let PBCreep = enemy.find(i => 
+      i.owner.username == "PacifistBot"
+      && i.body.find(i => i.type == ATTACK || i.type == RANGED_ATTACK)   
+    )
+    if (PBCreep != undefined) {
       let controller = room.controller!;
       controller.activateSafeMode();
       Game.notify("SF ON");
     }
-    Tower.defend(room);
+    towers.defend(room);
   }
 }

@@ -45,5 +45,7 @@ export const MyMemory = {
       return;
     }
     Memory.bornRoom = Game.spawns["Spawn1"].room.name;
+    Memory.delayHarvest = {};
+    Memory.spawns = {};
   },
 }

@@ -1,13 +1,12 @@
-import { Build } from "./build";
+import { build } from "./build";
 import { Defend } from "./defend";
 import { FastUpgrade } from "./fastUpgrade";
-import { Harvest } from "./harvest";
-import { Labs } from "../structures/labs"
+import { harvest } from "./harvest";
 import { Transfer } from "./transfer";
 import { Upgrade } from "./upgrade";
 import { RoomVisual } from "@/visual/roomVisual";
 import { Repair } from "./repair";
-import { centerTransferer } from "./centerTransferer";
+import { centerTransfer } from "./centerTransfer";
 
 export const RoomMaintain = {
   run: function () {
@@ -20,6 +19,7 @@ export const RoomMaintain = {
       if (room.controller != undefined) {
         level = room.controller.level;
       }
+      centerTransfer.run(room);
       if (level < 3) {
         FastUpgrade.run(room);
         Defend.run(room);
@@ -27,16 +27,15 @@ export const RoomMaintain = {
       }
       RoomVisual.run(roomName);
       let costs = this.roomCallBack(room);
-      Harvest.run(room);
-      centerTransferer.run(room);
+      harvest.run(room);
       Transfer.run(room, costs);
-      if (Build.run(room) == 0) {
-        Upgrade.run(room, 1);
+      build.run(room);
+      if (room.find(FIND_CONSTRUCTION_SITES).length == 0) {
+        Upgrade.run(room, 3);
       } else {
         Upgrade.run(room);
       }
       Repair.run(room)
-      Labs.runReaction(room);
       Defend.run(room);
     }
   },

@@ -13,8 +13,9 @@ export const Withdraw = {
     let links = _.filter(room.find(FIND_STRUCTURES), (i) =>
       i.structureType == "link"
       && i.store.energy >= amount
-      && i.pos.findInRange(FIND_SOURCES, 2).length == 0) as 
-      StructureLink[];
+      && i.pos.findInRange(FIND_SOURCES, 2).length == 0
+      && i.pos.getRangeTo(room.find(FIND_MY_SPAWNS)[0]) != 1
+      ) as StructureLink[];
     let storage = room.storage;
 
     let targets: (StructureTerminal | StructureContainer 

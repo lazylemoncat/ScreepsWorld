@@ -1,4 +1,4 @@
-export const Tower = {
+export const towers = {
   repair: function (target: AnyStructure, room: Room) {
     let towers = _.filter(room.find(FIND_STRUCTURES), (i) =>
       i.structureType == "tower") as StructureTower[];

@@ -1,4 +1,4 @@
-export const Labs = {
+export const labs = {
   runReaction: function (room: Room) {
     let labs = _.filter(room.find(FIND_STRUCTURES), i => 
       i.structureType == "lab") as StructureLab[];

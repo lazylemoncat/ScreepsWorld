@@ -1,6 +1,7 @@
 import "./global/market";
 import "./global/tasks";
 import { MyMemory } from "./memory/myMemory";
+import { returnFreeSpawn } from "./structures/spawns";
 import { outerSource } from "./tasks/outerSource";
 import { RoomMaintain } from "./tasks/roomMaintain";
 import { SpawnCreep } from "./tasks/spawnCreep";
@@ -17,7 +18,10 @@ export const loop = function () {
   // 运营每一个房间
   RoomMaintain.run();
   let room = Game.rooms["E41N49"]
-  outerSource.run(room);
+  outerSource({
+    room: room,
+    returnFreeSpawn: returnFreeSpawn,
+  });
   for (let roomName in Game.rooms) {
     let room = Game.rooms[roomName];
     if (room.controller == undefined ||  room.controller.my == false) {
