@@ -1,5 +1,5 @@
 import "./global/market";
-import "./global/tasks";
+import './consoleApi';
 import { MyMemory } from "./memory/myMemory";
 import { returnFreeSpawn } from "./structures/spawns";
 import { outerSource } from "./tasks/outerSource";

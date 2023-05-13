@@ -1,27 +1,104 @@
-import { MyMemory } from "@/memory/myMemory";
-import { SpawnCreep } from "./spawnCreep";
-import { Carrier } from "./roles/carrier";
-import { links } from "../structures/links";
-import { MineralCarrier } from "./roles/mineralCarrier";
-import { returnFreeSpawn, spawns } from "../structures/spawns";
+import { returnFreeSpawn} from "../structures/spawns";
 
-export const Transfer = {
-  run: function (room: Room, costs: CostMatrix) {
-    links.transferEnergy(room);
-    let carriers = _.filter(Game.creeps, (creep) => creep.memory.role 
-      == "carrier");
-    if (carriers.length < 2) {
-      this.newCarrier(room);
+export const transferTask = function(room: Room) {
+  const run = function() {
+    checkSpawnCreep();
+    runCarrier();
+    runMineralCarrier();
+    return;
+  };
+  const createCarrierName = function(): string {
+    return 'carrier' + room.name + '_' + Game.time % 10;
+  };
+  const createMineralCarrierName = function() {
+    return 'mineralCarrier' + room.name + '_' + Game.time % 10;
+  };
+  const createCarrierBody = function(): BodyPartConstant[] {
+    let energy = room.energyAvailable;
+    if (energy <= 300) {
+      return [CARRY, CARRY, MOVE];
     }
-    let spawnPos = room.find(FIND_MY_SPAWNS)[0].pos;
-    let lookForCenterContainers = _.filter(
-      room.lookForAtArea(LOOK_STRUCTURES, spawnPos.y - 2, spawnPos.x, 
-        spawnPos.y + 2, spawnPos.x + 2, true
-      ), i => 
-        i.structure.structureType == STRUCTURE_EXTENSION);
-    let centerContainers = lookForCenterContainers.map(i => 
-      i.structure.id
+    let bodys: BodyPartConstant[] = [];
+    let bodysNum = Math.floor(energy / 150);
+    bodysNum = bodysNum >= 6 ? 6 : bodysNum;
+    for (let i = 0; i < bodysNum; ++i) {
+      bodys.push(CARRY, CARRY, MOVE);
+    }
+    return bodys;
+  };
+  const createMineralCarrierBody = function() {
+    let energy = room.energyAvailable;
+    if (energy <= 300) {
+      return [CARRY, CARRY, MOVE];
+    }
+    let bodys: BodyPartConstant[] = [];
+    let bodysNum = Math.floor(energy / 150);
+    bodysNum = bodysNum >= 6 ? 6 : bodysNum;
+    for (let i = 0; i < bodysNum; ++i) {
+      bodys.push(CARRY, CARRY, MOVE);
+    }
+    return bodys;
+  };
+  const newCarrier = function(): void {
+    let spawn = returnFreeSpawn(room);
+    if (spawn == undefined) {
+      return;
+    }
+    let name = createCarrierName();
+    let body = createCarrierBody();
+    let memory: CreepMemory = {
+      role: 'carrier',
+      bornRoom: room.name,
+    }
+    spawn.spawnCreep(body, name, {
+      memory,
+      directions: [TOP_LEFT, LEFT, BOTTOM_LEFT],
+    });
+    return;
+  };
+  const newMineralCarrier = function() {
+    let spawn = returnFreeSpawn(room);
+    if (spawn == undefined) {
+      return;
+    }
+    let name = createMineralCarrierName();
+    let body = createCarrierBody();
+    let memory: CreepMemory = {
+      role: 'mineralCarrier',
+      bornRoom: room.name,
+    };
+    spawn.spawnCreep(body, name, {
+      memory,
+      directions: [TOP_LEFT, LEFT, BOTTOM_LEFT],
+    })
+    return;
+  };
+  const checkSpawnCreep = function() {
+    let carriers = _.filter(Game.creeps, (creep) => 
+      creep.memory.role == "carrier");
+    if (carriers.length < 2) {
+      newCarrier();
+    }
+    let extractor = _.find(room.find(FIND_STRUCTURES), i =>
+      i.structureType == STRUCTURE_EXTRACTOR
     );
+    if (room.controller!.level < 6 || !extractor) {
+      return;
+    }
+    let mineralCarriers =  _.find(Game.creeps, (creep) => 
+      creep.memory.role == "mineralCarrier");
+    if (mineralCarriers == undefined) {
+      newMineralCarrier();
+    }
+    return;
+  };
+  const findTransferTarget = function(): AnyStoreStructure[] {
+    let centerSpawnPos = room.find(FIND_MY_SPAWNS)[0].pos;
+    let centerExtensions = _.filter(room.lookForAtArea(LOOK_STRUCTURES, 
+      centerSpawnPos.y - 2, centerSpawnPos.x, centerSpawnPos.y + 2, 
+      centerSpawnPos.x + 2, true), i => 
+        i.structure.structureType == STRUCTURE_EXTENSION
+    ).map(i => i.structure.id) as Id<StructureExtension>[];
     let transferTargets = _.filter(room.find(FIND_STRUCTURES), (i) => 
       "store" in i 
       && i.store["energy"] < i.store.getCapacity("energy") 
@@ -30,83 +107,191 @@ export const Transfer = {
         || (
           i.structureType == "extension" 
           && i.pos.findInRange(FIND_SOURCES, 2).length == 0
-          && !centerContainers.includes(i.id)
+          && !centerExtensions.includes(i.id)
         )
         || (i.structureType == "tower" && i.store[RESOURCE_ENERGY] < 600)
-        || (i.structureType == "terminal" && i.store["energy"] < 50000)
-        || i.structureType == "lab"
+        || (i.structureType == "lab" && i.store[RESOURCE_ENERGY] < 1500)
         || (i.structureType == "container" 
-        && i.store[RESOURCE_ENERGY] < 1500
-        && i.pos.findInRange(FIND_SOURCES, 2).length == 0
-        && i.pos.findInRange(FIND_MINERALS, 1).length == 0)
+            && i.store[RESOURCE_ENERGY] < 1500
+            && i.pos.findInRange(FIND_SOURCES, 2).length == 0
+            && i.pos.findInRange(FIND_MINERALS, 1).length == 0
+          )
       )
     ) as AnyStoreStructure[];
+    return transferTargets;
+  };
+  const findWithdrawTarget = function() {
+    let containers = _.filter(room.find(FIND_STRUCTURES), (i) =>
+      i.structureType == "container"
+      && i.store["energy"] > 0
+      && i.pos.findInRange(FIND_SOURCES, 2)[0] != undefined
+    ) as StructureContainer[];
+    let storage = room.storage;
+    if (storage == undefined) {
+      return containers;
+    }
+    return [...containers, storage];
+  };
+  const runCarrier = function() {
+    let creeps = _.filter(Game.creeps, (creep) => 
+      creep.memory.role == "carrier");
+    let transferTargets = findTransferTarget();
+    let withdrawTargets = findWithdrawTarget();
     if (transferTargets.length == 0) {
-      if (room.storage != undefined) {
-        transferTargets.push(room.storage);
-      } else {
-        return;
-      }
+      withdrawTargets.splice(withdrawTargets.indexOf(room.storage!), 1)
     }
-    const unsplice = ["storage"];
-    let transfered = -1;
-    for (let i = 0; i < carriers.length; ++i) {
-      if (i != 0 && transferTargets[0] == undefined) {
+    for (let i = 0; i < creeps.length; ++i) {
+      let creep = creeps[i];
+      if (creeps[i].store.getUsedCapacity() == 0) {
+        let target = creeps[i].pos.findClosestByRange(
+          withdrawTargets.filter(target => 
+            target.store[RESOURCE_ENERGY] >= creep.store.getFreeCapacity())
+        );
+        if (target == undefined) {
+          continue;
+        }
+        if (creep.withdraw(target, RESOURCE_ENERGY) == ERR_NOT_IN_RANGE) {
+          creep.moveTo(target);
+        }
+        continue;
+      }
+      if (transferTargets.length == 0) {
         if (room.storage != undefined) {
-          transferTargets[0] = room.storage;
+          transferTargets.push(room.storage);
         }
       }
-      let carrier = carriers[i];
-      if (MyMemory.upateWorking(carrier, "energy") 
-        && transferTargets[0] != undefined) {
-        let target = carrier.pos.
-          findClosestByRange(transferTargets) as AnyStoreStructure;
-        if (target != null) {
-          carrier.say(target.structureType);
-        }
-        if (!unsplice.includes(target.structureType)) {
-            transferTargets.splice(transferTargets.indexOf(target), 1);
-        }
-        if (Carrier.goTransfer(carrier, room, target, 
-          transfered == i, costs)) {
-          if (target != room.storage 
-              && carrier.store["energy"] 
-              - target.store.getFreeCapacity(RESOURCE_ENERGY) >= 0) {
-            transfered = i;
-            --i;
-          }
-        }
-      } else {
-        Carrier.goWithdrawEnergy(carrier, room, costs);
+      let target = creep.pos.findClosestByRange(transferTargets);
+      if (target == undefined) {
+        continue;
+      }
+      creep.say(target.structureType)
+      transferTargets.splice(transferTargets.indexOf(target), 1);
+      if (creep.transfer(target, RESOURCE_ENERGY) == ERR_NOT_IN_RANGE) {
+        creep.moveTo(target);
+        continue;
+      }
+      if (creep.store[RESOURCE_ENERGY] 
+          - target.store.getFreeCapacity(RESOURCE_ENERGY) > 0) {
+        creep.store[RESOURCE_ENERGY] 
+          -= target.store.getFreeCapacity(RESOURCE_ENERGY);
+        --i;
       }
     }
-    MineralCarrier.run(room);
-  },
-  newCarrier: function (room: Room) {
-    if (!returnFreeSpawn(room)) {
+  };
+  const runMineralCarrier = function() {
+    let creep = _.find(Game.creeps, (creep) => 
+      creep.memory.role == "mineralCarrier");
+    if (creep == undefined) {
       return;
     }
-    let newListPush = {
-      role: "carrier",
-      bodys: this.returnBodys(room),
+    if (transferLab(creep) || withdrawLab(creep)) {
+      return;
     }
-    SpawnCreep.newList.push(newListPush);
+    let mineral = room.find(FIND_MINERALS)[0];
+    let container = _.find(room.find(FIND_STRUCTURES), i => 
+      i.structureType == STRUCTURE_CONTAINER
+      && i.pos.getRangeTo(mineral) == 1
+    ) as StructureContainer;
+    let resource = Object.keys(container.store)[0] as ResourceConstant;
+    if (creep.store.getUsedCapacity() == 0) {
+      if (creep.withdraw(container, resource) == ERR_NOT_IN_RANGE) {
+        creep.moveTo(container);
+      } else if (container.store.getUsedCapacity() == 0) {
+        if (creep.pos.getRangeTo(container) > 1) {
+          creep.moveTo(container);
+        }
+      }
+      return;
+    }
+    transferStorage(creep);
     return;
-  },
-  returnBodys: function (room: Room): BodyPartConstant[] {
-    let energy = room.energyAvailable;
-    if (energy <= 300) {
-      return [CARRY, MOVE];
+  };
+  const transferStorage = function(creep: Creep) {
+    let storage = room.storage;
+    if (storage == undefined) {
+      return;
     }
-    let bodys: BodyPartConstant[] = [];
-    let carryNum = Math.floor(energy / 100) / 2;
-    carryNum = carryNum >= 12 ? 12 : carryNum;
-    for (let i = 0; i < carryNum; ++i) {
-      bodys.push(CARRY, MOVE);
+    let resource = Object.keys(creep.store)[0] as ResourceConstant;
+    if (creep.transfer(storage, resource) == ERR_NOT_IN_RANGE) {
+      creep.moveTo(storage);
     }
-    return bodys;
-  },
-  getTransferTask: function (room: Room) {
-    
-  },
+    return;
+  };
+  const transferLab = function(creep: Creep): boolean {
+    let labId = Memory.rooms[room.name].labId;
+    let substrateLabs = labId.substrateLabs.map(i => 
+      Game.getObjectById(i as Id<StructureLab>)
+    ) as StructureLab[];
+    if (substrateLabs.length < 2) {
+      return false;
+    }
+    let reaction = Memory.rooms[room.name].labTask;
+    let resource1 = reaction.type.lab1 as ResourceConstant;
+    let resource2 = reaction.type.lab2 as ResourceConstant;
+    if (substrateLabs[0].store[resource1] 
+        < reaction.amount
+        && substrateLabs[0].store[resource1] 
+        < 2000) {
+      if (creep.store.getUsedCapacity() > 0) {
+        if (Object.keys(creep.store)[0] != reaction.type.lab1) {
+          transferStorage(creep);
+          return true;
+        }
+        if (creep.transfer(substrateLabs[0], resource1) == ERR_NOT_IN_RANGE) {
+          creep.moveTo(substrateLabs[0]);
+        }
+        return true;
+      }
+      if (creep.withdraw(room.storage!, resource1) == ERR_NOT_IN_RANGE) {
+        creep.moveTo(room.storage!);
+      }
+      return true;
+    } else if (substrateLabs[1].store[resource2] 
+        < reaction.amount
+        && substrateLabs[1].store[resource2] 
+        < 2000) {
+      if (creep.store.getUsedCapacity() > 0) {
+        if (Object.keys(creep.store)[0] != reaction.type.lab2) {
+          transferStorage(creep);
+          return true;
+        }
+        if (creep.transfer(substrateLabs[1], resource2) == ERR_NOT_IN_RANGE) {
+          creep.moveTo(substrateLabs[1]);
+        }
+        return true;
+      }
+      if (creep.withdraw(room.storage!, resource2) == ERR_NOT_IN_RANGE) {
+        creep.moveTo(room.storage!);
+      }
+      return true;
+    } else {
+      return false;
+    }
+  };
+  const withdrawLab = function(creep: Creep): boolean {
+    let labId = Memory.rooms[room.name].labId;
+    let reactionLabs = labId.reactionLabs.map(i => 
+      Game.getObjectById(i as Id<StructureLab>)
+    ) as StructureLab[];
+    if (reactionLabs.length < 1) {
+      return false;
+    }
+    for (let i = 0; i < reactionLabs.length; ++i) {
+      let resource = Object.keys(reactionLabs[i].store).find(i => 
+        i != RESOURCE_ENERGY) as ResourceConstant;
+      if (!resource || reactionLabs[i].store[resource] < 1000) {
+        continue;
+      }
+      if (creep.store.getUsedCapacity() > 0) {
+        transferStorage(creep);
+        return true;
+      }
+      if (creep.withdraw(reactionLabs[i], resource) == ERR_NOT_IN_RANGE) {
+        creep.moveTo(reactionLabs[i]);
+      }
+      return true;
+    }
+    return false;
+  };
+  run();
 }

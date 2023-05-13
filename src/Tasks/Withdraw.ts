@@ -18,16 +18,11 @@ export const Withdraw = {
       ) as StructureLink[];
     let storage = room.storage;
 
-    let targets: (StructureTerminal | StructureContainer 
+    let targets: (StructureContainer 
       | StructureStorage | StructureLink)[] = [...containers,...links];
     if (storage != undefined) {
       if (storage.store["energy"] >= amount) {
         targets.push(storage);
-      }
-    }
-    if (room.terminal != undefined) {
-      if (room.terminal.store["energy"] >= 100000) {
-        targets.push(room.terminal);
       }
     }
     let target = creep.pos.findClosestByRange(targets);

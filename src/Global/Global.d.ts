@@ -17,10 +17,15 @@ declare let global: {
     // 当 cpu 存款到10000时，自动获取一个 Pixel
     getPixel: () => void,
   };
-  tasks: {
-    type: "transfer" | "withdraw",
-    target: Id<_HasId>,
-    resource: ResourceConstant,
-    amount?: number;
-  }[];
+  resetMemory: () => void,
+  cancelAllOrder: () => 'OK',
+  setStorageTask: () => void,
+  setTerminalTask: () => void,
+  setLabTask: () => void,
+  setAutoSell: () => void,
+  setOuterSource: (fromRoomName: string, toRoomName: string) => string,
+  cancelOuterSource: (roomName: string) => string,
+  consoleAvgWallHits: (roomName: string) => string,
+  consoleAvgRampartHits: (roomName: string) => string,
+  clearRoom: (fromRoomName: string, toRoomName: string) => void,
 };

@@ -4,8 +4,7 @@ export const spawns = {
    * @param room 
    * @returns {boolean} 第一个 spawn 是否空闲
    */
-  isFreeFirstSpawn: function(
-      room: Room, role: string): StructureSpawn | undefined {
+  isFreeFirstSpawn: function(room: Room): StructureSpawn | undefined {
     let spawn = room.find(FIND_MY_SPAWNS)[0];
     if (spawn.spawning == null
       && Memory.spawns[spawn.name].spawnFree != Game.time

@@ -1,5 +1,3 @@
-import { towers } from "../structures/towers";
-
 export const Defend = {
   run: function (room: Room) {
     let enemy = room.find(FIND_HOSTILE_CREEPS);
@@ -15,6 +13,5 @@ export const Defend = {
       controller.activateSafeMode();
       Game.notify("SF ON");
     }
-    towers.defend(room);
   }
 }

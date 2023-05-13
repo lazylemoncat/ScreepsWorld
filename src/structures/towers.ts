@@ -1,32 +1,47 @@
-export const towers = {
-  repair: function (target: AnyStructure, room: Room) {
+export const towers = function(room: Room) {
+  const run = function () {
     let towers = _.filter(room.find(FIND_STRUCTURES), (i) =>
       i.structureType == "tower") as StructureTower[];
-    let enemy = room.find(FIND_HOSTILE_CREEPS);
-    if (enemy[0] != undefined) {
-      return;
+    if (attack(towers)) {
+      return;;
     }
     for (let i = 0; i < towers.length; ++i) {
-      let tower = towers[i];
-      tower.repair(target);
+      if (!heal(towers[i])) {
+        repair(towers[i], i);
+      }
     }
     return;
-  },
-  defend: function (room: Room) {
-    let towers = _.filter(room.find(FIND_STRUCTURES), (i) =>
-      i.structureType == "tower") as StructureTower[];
+  };
+  const attack = function (towers: StructureTower[]): boolean {
     let enemy = room.find(FIND_HOSTILE_CREEPS);
     if (enemy[0] == undefined) {
-      return;
-    }
-    enemy = _.filter(enemy, i => i.pos.findInRange(FIND_EXIT, 2).length == 0);
-    if (enemy[0] == undefined) {
-      return;
+      return false;
     }
     for (let i = 0; i < towers.length; ++i) {
-      let tower = towers[i];
-      tower.attack(enemy[0]);
+      towers[i].attack(enemy[0]);
     }
+    return true;
+  };
+  const heal = function(tower: StructureTower): boolean {
+    let creep = _.find(room.find(FIND_MY_CREEPS), i => 
+      i.hits < i.hitsMax
+    );
+    if (creep == undefined) {
+      return false;
+    }
+    tower.heal(creep);
+    return true;
+  };
+  const repair = function (tower: StructureTower, index: number): void {
+    let targets = _.filter(room.find(FIND_STRUCTURES), i => 
+      i.hits < i.hitsMax 
+      && i.structureType != STRUCTURE_WALL
+      && i.structureType != STRUCTURE_RAMPART
+      || (i.structureType == STRUCTURE_RAMPART && i.hits < 1000)
+    );
+    targets.sort((a,b) => a.hits - b.hits);
+    tower.repair(targets[index]);
     return;
-  },
+  };
+  run();
 }

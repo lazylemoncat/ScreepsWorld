@@ -7,13 +7,7 @@ export const build = {
     let sites = room.find(FIND_CONSTRUCTION_SITES);
     let builders = _.filter(Game.creeps, (creep) => creep.memory.role 
       == "builder");
-    if (sites.length == 0) {
-      for (let i = 0; i < builders.length; ++i) {
-        this.goRecycle(builders[i], room);
-      }
-      return;
-    }
-    if (builders.length < 1) {
+    if (builders.length < 1 && sites.length != 0) {
       this.newBuilder(room);
     }
     for (let i = 0; i < builders.length; ++i) {
@@ -71,6 +65,10 @@ export const build = {
   runBuilder: function (creep: Creep, room: Room): void {
     if (MyMemory.upateWorking(creep, "energy")) {
       let sites = room.find(FIND_CONSTRUCTION_SITES);
+      if (sites.length == 0) {
+        creep.memory.role = 'waller';
+        return;
+      }
       if (creep.build(sites[0]) == ERR_NOT_IN_RANGE) {
         creep.moveTo(sites[0]);
       }

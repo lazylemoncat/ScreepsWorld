@@ -2,11 +2,15 @@ import { build } from "./build";
 import { Defend } from "./defend";
 import { FastUpgrade } from "./fastUpgrade";
 import { harvest } from "./harvest";
-import { Transfer } from "./transfer";
+import { transferTask } from "./transfer";
 import { Upgrade } from "./upgrade";
 import { RoomVisual } from "@/visual/roomVisual";
-import { Repair } from "./repair";
+import { repair } from "./repair";
 import { centerTransfer } from "./centerTransfer";
+import { links } from "@/structures/links";
+import { towers } from "@/structures/towers";
+import { terminal } from "@/structures/terminal";
+import { labs } from "@/structures/labs";
 
 export const RoomMaintain = {
   run: function () {
@@ -28,15 +32,19 @@ export const RoomMaintain = {
       RoomVisual.run(roomName);
       let costs = this.roomCallBack(room);
       harvest.run(room);
-      Transfer.run(room, costs);
+      transferTask(room);
       build.run(room);
       if (room.find(FIND_CONSTRUCTION_SITES).length == 0) {
         Upgrade.run(room, 3);
       } else {
         Upgrade.run(room);
       }
-      Repair.run(room)
+      repair(room);
       Defend.run(room);
+      links(room);
+      towers(room);
+      labs(room);
+      terminal(room);
     }
   },
   roomCallBack: function (room: Room): CostMatrix {

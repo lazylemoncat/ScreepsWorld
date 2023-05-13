@@ -59,12 +59,8 @@ export const FastUpgrade = {
   goHarvest: function (creep: Creep, room: Room) {
     let sources = room.find(FIND_SOURCES);
     let source = sources.find(i => creep.name.indexOf(i.id) != -1);
-    if (source == undefined) {
-      creep.say("ERR_NOT_FOUND_SOURCE");
-      return;
-    }
-    if (creep.harvest(source) == ERR_NOT_IN_RANGE) {
-      creep.moveTo(source);
+    if (creep.harvest(source!) == ERR_NOT_IN_RANGE) {
+      creep.moveTo(source!);
     }
     return;
   },

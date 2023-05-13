@@ -68,12 +68,12 @@ export const outerSource = function(context: outerSourceContext) {
    */
   const createHarvesterBody = function (room: Room): BodyPartConstant[] {
     let energy = room.energyCapacityAvailable;
-    let bodys = [WORK, WORK, CARRY, MOVE];
+    let bodys = [WORK, WORK, MOVE];
     if (energy >= 800) {
-      bodys = [WORK, WORK, WORK, WORK, WORK, WORK, CARRY, MOVE, MOVE, MOVE];
+      bodys = [WORK, WORK, WORK, WORK, WORK, WORK, MOVE, MOVE, MOVE];
       return bodys;
     }
-    const consume = 300;
+    const consume = 250;
     let times = Math.floor((energy - consume) / 250);
     for (let i = 0; i < times; ++i) {
       bodys.push(WORK, WORK, MOVE);
@@ -92,7 +92,7 @@ export const outerSource = function(context: outerSourceContext) {
     }
     let bodys: BodyPartConstant[] = [];
     let carryNum = Math.floor(energy / 150);
-    carryNum = carryNum >= 48 ? 48 : carryNum;
+    carryNum = carryNum >= 15 ? 15 : carryNum;
     for (let i = 0; i < carryNum; ++i) {
       bodys.push(CARRY, CARRY, MOVE);
     }
@@ -111,8 +111,9 @@ export const outerSource = function(context: outerSourceContext) {
    * @returns {BodyPartConstant[]} 外矿建筑师的身体部件数组
    */
   const createOuterBuilderBody = function(room: Room): BodyPartConstant[] {
-    let energy = room.energyCapacityAvailable;
+    let energy = room.energyAvailable;
     let bodysNum = Math.floor(energy / 200);
+    bodysNum = bodysNum > 3 ? 3 : bodysNum;
     let body: BodyPartConstant[] = [];
     for (let i = 0; i < bodysNum; ++i) {
       body.push(WORK, CARRY, MOVE);
@@ -419,18 +420,6 @@ export const outerSource = function(context: outerSourceContext) {
       return;
     }
     // 尝试采集能量矿
-    let container = creep.pos.findInRange(FIND_STRUCTURES, 1).filter(i => 
-      i.structureType == STRUCTURE_CONTAINER
-    ) as StructureContainer[];
-    if (container[0] != undefined) {
-      if (creep.getActiveBodyparts(WORK) * 4 >
-          creep.store.getFreeCapacity()) {
-        let result = creep.transfer(container[0], RESOURCE_ENERGY);
-        if (result == ERR_FULL) {
-          return;
-        }
-      }
-    }
     creep.harvest(source);
     return;
   };
@@ -497,17 +486,13 @@ export const outerSource = function(context: outerSourceContext) {
         });
         return;
       }
-      // 在非工作模式下，从 container 或地上掉落的资源中获取能量
-      // 获取能量矿旁边的 container 对象
-      let container = source.pos.findInRange(FIND_STRUCTURES, 2, {
-          filter: s => s.structureType == STRUCTURE_CONTAINER
-      })[0];
+      // 在非工作模式下，从 地上掉落的资源中获取能量
       // 获取 source 旁边掉落的资源对象
       let resource = source.pos.findInRange(FIND_DROPPED_RESOURCES, 1, {
         filter: s => s.resourceType == RESOURCE_ENERGY
       })[0];
-      // 如果没有找到 container 对象，则向 source 移动
-      if (!container && !resource) {
+      // 如果没有找到 resource 对象，则向 source 移动
+      if (!resource) {
         if (creep.pos.getRangeTo(source) < 3) {
           return;
         }
@@ -517,23 +502,11 @@ export const outerSource = function(context: outerSourceContext) {
         return;
       }
       // 尝试从 container 中取出能量
-      let result = 0;
-      if (container) {
-        result = creep.withdraw(container, RESOURCE_ENERGY);
-        // 如果不在范围内，则向 container 移动
-        if (result == ERR_NOT_IN_RANGE) {
-          creep.moveTo(container, {
-            maxOps: 1000,
-          });
-        }
-      } else {
-        result = creep.pickup(resource);
-        // 如果不在范围内，则向 resource 移动
-        if (result == ERR_NOT_IN_RANGE) {
-          creep.moveTo(resource, {
-            maxOps: 1000,
-          });
-        }
+      if (creep.pickup(resource) == ERR_NOT_IN_RANGE) {
+      // 如果不在范围内，则向 resource 移动
+        creep.moveTo(resource, {
+          maxOps: 1000,
+        });
       }
     }
     return;
@@ -649,6 +622,7 @@ export const outerSource = function(context: outerSourceContext) {
     }
     let repairs = creep.pos.findInRange(FIND_STRUCTURES, 1).filter(i => 
       i.hits < i.hitsMax
+      && i.structureType == STRUCTURE_ROAD
     );
     if (repairs[0] != undefined) {
       creep.repair(repairs[0]);
@@ -656,6 +630,7 @@ export const outerSource = function(context: outerSourceContext) {
     }
     let repairTargets = _.filter(room.find(FIND_STRUCTURES), i => 
       i.hits < i.hitsMax
+      && i.structureType == STRUCTURE_ROAD
     );
     let repairTarget = creep.pos.findClosestByRange(repairTargets);
     if (repairTarget != undefined) {
@@ -675,7 +650,7 @@ export const outerSource = function(context: outerSourceContext) {
       }
       Memory.delayTime['outerBuilder' + room.name] = {
         time: Game.time, 
-        delay: 2000, 
+        delay: 10000, 
       };
     }
     return;

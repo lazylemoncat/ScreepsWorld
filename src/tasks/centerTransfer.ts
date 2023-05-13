@@ -10,10 +10,8 @@ export const centerTransfer = {
     if (room.controller!.level < 4) {
       return;
     }
-    // 只在第一个 spawn 产中央运输爬
-    let spawn = room.find(FIND_MY_SPAWNS)[0];
     // 检查是否需要生成新的运输爬
-    this.checkSpawnCreep(spawn, room);
+    this.checkSpawnCreep(room);
     // 遍历找到所有中央爬
     let centerTransferer = _.filter(room.find(FIND_MY_CREEPS), i =>
         i.memory.role == "centerTransferer");
@@ -21,22 +19,18 @@ export const centerTransfer = {
     for (let i = 0; i < centerTransferer.length; ++i) {
       this.runCenterTransferer(centerTransferer[i], room);
     }
-    let link = _.find(room.find(FIND_STRUCTURES), i => 
-      i.structureType == STRUCTURE_LINK
-      && i.pos.getRangeTo(spawn) == 1
-    ) as StructureLink;
-    if (link == undefined) {
-      return;
-    }
-    this.runCenterLink(link, room);
     return;
   },
   /**
    * 返回中央运输爬的身体
    * @returns {BodyPartConstant[]} 运输爬的身体
    */
-  createTransfererBody: function (room: Room): BodyPartConstant[] {
-    let carryNum = room.controller!.level - 3;
+  createCenterTransfererBody: function (room: Room): BodyPartConstant[] {
+    if (room.controller!.level < 6) {
+      return [CARRY];
+    }
+    let carryNum = room.energyAvailable / 50;
+    carryNum = carryNum > 10 ? 10 : carryNum;
     let bodys: BodyPartConstant[] = [];
     for (let i = 0; i < carryNum; ++i) {
       bodys.push(CARRY);
@@ -47,33 +41,39 @@ export const centerTransfer = {
    * 返回中央运输爬的名字
    * @returns {string} 运输爬的名字
    */
-  createTransfererName: function (room: Room): string {
+  createCenterTransfererName: function (room: Room): string {
     return "centerTransferer" + room.name + '_' + Game.time % 10
+  },
+  newCenterTransferer: function(room: Room) {
+    let spawn = spawns.isFreeFirstSpawn(room);
+    if (!spawn) {
+      return;
+    }
+    let name = this.createCenterTransfererName(room);
+    let body = this.createCenterTransfererBody(room);
+    let memory = { 
+      role: 'centerTransferer',
+      bornRoom: room.name,
+    };
+    let result = spawn.spawnCreep(body, name, {
+      memory: memory,
+      directions: [TOP_RIGHT, BOTTOM_RIGHT],
+    });
+    return;
   },
   /**
    * 检查是否需要生产新的中央运输爬
    * @param spawn 执行生产任务的 spawn
    * @param room 执行任务的房间
    */
-  checkSpawnCreep: function (spawn: StructureSpawn, room: Room): void {
+  checkSpawnCreep: function (room: Room): void {
     let centerTransferer = _.filter(room.find(FIND_MY_CREEPS), i =>
         i.memory.role == "centerTransferer");
     if (centerTransferer.length < 2) {
-      if (!spawns.isFreeFirstSpawn(room, 'centerTransferer')) {
-        return;
-      }
-      let name = this.createTransfererName(room);
-      let body = this.createTransfererBody(room);
-      let memory = { 
-        role: 'centerTransferer',
-        bornRoom: room.name,
-      };
-      let result = spawn.spawnCreep(body, name, {
-        memory: memory,
-        directions: [TOP_RIGHT, BOTTOM_RIGHT],
-      });
+      this.newCenterTransferer(room);
       return;
     }
+    return;
   },
   /**
    * 中央运输爬执行运输任务
@@ -81,46 +81,162 @@ export const centerTransfer = {
    * @param room 执行任务的房间
    */
   runCenterTransferer: function (creep: Creep, room: Room): void {
-    if (creep.store[RESOURCE_ENERGY] == 0) {
-      let targets = creep.pos.findInRange(FIND_STRUCTURES, 1).filter(i => 
-          "store" in i 
-          && i.store[RESOURCE_ENERGY] > 0
-          && (i.structureType == STRUCTURE_CONTAINER 
-          || i.structureType == STRUCTURE_STORAGE
-          || i.structureType == STRUCTURE_TERMINAL)
-      ) as AnyStoreStructure[];
-      creep.withdraw(targets[0], RESOURCE_ENERGY);
+    if (this.transferEnergy(creep, room)) {
+      return;
+    }
+    if (!room.terminal || creep.pos.getRangeTo(room.terminal) > 1) {
+      return;
+    }
+    if (creep.store.getUsedCapacity() > 0) {
+      this.transferResource(creep, room, room.terminal);
     } else {
-      let targets = creep.pos.findInRange(FIND_STRUCTURES, 1).filter(i => 
-        "store" in i 
-        && i.store.getFreeCapacity(RESOURCE_ENERGY) > 0
-        && (i.structureType == STRUCTURE_EXTENSION
-            || i.structureType == STRUCTURE_SPAWN
-            )
-      ) as AnyStoreStructure[];
-      creep.transfer(targets[0], RESOURCE_ENERGY);
+      this.withdrawResource(creep, room, room.terminal);
     }
     return;
   },
-  /**
-   * 将中央 Link 的能量传送至升级 Link
-   * @param link 中央运输 Link
-   * @param room 执行运输任务的房间
-   */
-  runCenterLink: function (link: StructureLink, room: Room) : void {
-    if (link.store[RESOURCE_ENERGY] < 400) {
+  withdrawEnergy: function(creep: Creep, room: Room): void {
+    let terminalEnergy = Memory.rooms[room.name].terminalTask.energy;
+    let centerLink = Game.getObjectById(Memory.rooms[room.name].centerLink);
+    let target = centerLink != undefined 
+        && centerLink.store[RESOURCE_ENERGY] > 50 
+        && room.storage
+        && (creep.pos.getRangeTo(room.storage) != 1
+            || centerLink.store[RESOURCE_ENERGY] > 400)
+      ? centerLink : creep.pos.findInRange(FIND_STRUCTURES, 1).filter(i => 
+        "store" in i 
+        && i.store[RESOURCE_ENERGY] > 0
+        && (i.structureType == STRUCTURE_CONTAINER 
+            || (i.structureType == STRUCTURE_LINK
+                && room.storage
+                && creep.pos.getRangeTo(room.storage) == 1)
+            || (i.structureType == STRUCTURE_STORAGE 
+                && i.store[RESOURCE_ENERGY] >= creep.store.getFreeCapacity()
+                && !(room.terminal 
+                && room.terminal.store[RESOURCE_ENERGY] > terminalEnergy))
+            || (i.structureType == STRUCTURE_TERMINAL
+                && i.store[RESOURCE_ENERGY] > terminalEnergy)
+          )
+      )
+    [0] as AnyStoreStructure;
+    if (target == undefined) {
       return;
     }
-    let upgradeLink = _.find(room.find(FIND_STRUCTURES), i => 
-      i.structureType == STRUCTURE_LINK
-      && i.pos.getRangeTo(room.controller!) <= 3
-    ) as StructureLink;
-    if (upgradeLink == undefined) {
+    if (target.structureType == STRUCTURE_TERMINAL) {
+      let amount = target.store[RESOURCE_ENERGY] - terminalEnergy;
+      amount = amount > creep.store.getFreeCapacity() ? 
+        creep.store.getFreeCapacity() : amount;
+      creep.withdraw(target, RESOURCE_ENERGY, amount);
+      return;
+    } else if (target.structureType == STRUCTURE_LINK) {
+      if (creep.pos.getRangeTo(room.storage!) == 1) {
+        let amount = target.store[RESOURCE_ENERGY] - 400;
+        amount = creep.store.getFreeCapacity() < amount ? 
+          creep.store.getFreeCapacity() : amount;
+        creep.withdraw(target, RESOURCE_ENERGY, amount);
+      } else {
+        creep.withdraw(target, RESOURCE_ENERGY);
+      }
       return;
     }
-    if (upgradeLink.store[RESOURCE_ENERGY] <= 400) {
-      link.transferEnergy(upgradeLink);
+    creep.withdraw(target, RESOURCE_ENERGY);
+    return;
+  },
+  transferEnergy: function(creep: Creep, room: Room): boolean {
+    let terminalEnergy = Memory.rooms[room.name].terminalTask.energy;
+    let centerLink = Game.getObjectById(Memory.rooms[room.name].centerLink);
+    let target = creep.pos.findInRange(FIND_STRUCTURES, 1).filter(i => 
+      "store" in i 
+      && i.store.getFreeCapacity(RESOURCE_ENERGY) > 0
+      && (i.structureType == STRUCTURE_EXTENSION
+          || i.structureType == STRUCTURE_LINK 
+          && i.store[RESOURCE_ENERGY] < 400
+          || i.structureType == STRUCTURE_SPAWN
+          || (i.structureType == STRUCTURE_STORAGE 
+            && (i.store[RESOURCE_ENERGY] < 50000
+                || room.terminal 
+                && room.terminal.store[RESOURCE_ENERGY] > terminalEnergy
+                || centerLink
+                && centerLink.store[RESOURCE_ENERGY] > 400)
+            )
+          || (i.structureType == STRUCTURE_TERMINAL
+              && i.store[RESOURCE_ENERGY] < terminalEnergy)
+        )
+    )[0] as AnyStoreStructure | undefined;
+    if (target == undefined) {
+      return false;
     }
+    if (creep.store[RESOURCE_ENERGY] == 0) {
+      if (creep.store.getFreeCapacity() == 0) {
+        let type = Object.keys(creep.store)[0] as ResourceConstant;
+        creep.transfer(room.storage!, type);
+        return true;
+      }
+      this.withdrawEnergy(creep, room);
+      return true;
+    }
+    if (target.structureType == STRUCTURE_LINK) {
+      let amount = Math.min(400 - target.store[RESOURCE_ENERGY], 
+        creep.store[RESOURCE_ENERGY]);
+      creep.transfer(target, RESOURCE_ENERGY, amount);
+      return true;
+    }
+    creep.transfer(target, RESOURCE_ENERGY);
+    return true;
+  },
+  withdrawResource: function(
+      creep: Creep, 
+      room: Room, 
+      terminal: StructureTerminal) {
+    let resource = Object.keys(terminal.store).find(i => 
+      !Memory.rooms[room.name].terminalTask.hasOwnProperty(i)
+      || Memory.rooms[room.name].terminalTask.hasOwnProperty(i)
+        && Memory.rooms[room.name].terminalTask[i] 
+          < terminal.store[i as ResourceConstant]
+    ) as ResourceConstant;
+    if (resource != undefined) {
+      let amount = creep.store.getFreeCapacity();
+      if (Memory.rooms[room.name].terminalTask[resource] != undefined) {
+        amount = Math.min(terminal.store[resource] 
+          - Memory.rooms[room.name].terminalTask[resource], amount);
+      } else { 
+        amount = amount > terminal.store[resource] 
+          ? terminal.store[resource] : amount;
+      }
+      creep.withdraw(terminal, resource, amount);
+      return;
+    }
+    resource = Object.keys(room.storage!.store).find(i => 
+      Memory.rooms[room.name].terminalTask.hasOwnProperty(i)
+        && Memory.rooms[room.name].terminalTask[i] 
+          > terminal.store[i as ResourceConstant]
+    ) as ResourceConstant;
+    if (resource != undefined) {
+      let amount = creep.store.getFreeCapacity();
+      if (Memory.rooms[room.name].terminalTask[resource] != undefined) {
+        amount = Math.min(Memory.rooms[room.name].terminalTask[resource]
+          - terminal.store[resource], amount);
+      }
+      creep.withdraw(room.storage!, resource, amount);
+      return;
+    }
+    return;
+  },
+  transferResource: function(
+      creep: Creep, 
+      room: Room, 
+      terminal: StructureTerminal) {
+    let resource = Object.keys(creep.store)[0] as ResourceConstant;
+    let amount = creep.store[resource];
+    if (Memory.rooms[room.name].terminalTask[resource] != undefined) {
+      let del = Memory.rooms[room.name].terminalTask[resource]
+      - terminal.store[resource];
+      if (del > 0) {
+        amount = amount - del > 0 ? del : amount;
+        creep.transfer(terminal, resource, amount);
+        return;
+      }
+    }
+    creep.transfer(room.storage!, resource);
     return;
   },
 }

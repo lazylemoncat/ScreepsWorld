@@ -137,6 +137,64 @@ global.Market = {
     },
 };
 
+/**
+ * 删除自己的所有订单以加快搜索速度
+ * @returns {'OK'} 删除成功
+ */
+global.cancelAllOrder = function () {
+    for (let i = 0; i < Object.keys(Game.market.orders).length; ++i) {
+        Game.market.cancelOrder(Object.keys(Game.market.orders)[i]);
+    }
+    return 'OK';
+};
+/**
+ * 设置外矿旗子
+ * @param fromRoomName 外矿的返回房间名
+ * @param toRoomName 目标外矿房间名
+ * @returns
+ */
+global.setOuterSource = function (fromRoomName, toRoomName) {
+    let name = 'outerSource' + Game.time % 10000;
+    let pos = (new RoomPosition(25, 25, toRoomName));
+    let res = pos.createFlag(name, COLOR_ORANGE, COLOR_YELLOW);
+    if (res == ERR_INVALID_ARGS) {
+        return 'ERR_INVALID_ARGS';
+    }
+    return 'OK';
+};
+/**
+ * 移除目标外矿旗子
+ * @param roomName 目标外矿房间名
+ * @returns {string} 成功,或找不到旗子
+ */
+global.cancelOuterSource = function (roomName) {
+    let flag = _.find(Game.flags, i => i.pos.roomName == roomName
+        && i.name.includes('outerSource'));
+    if (flag == undefined) {
+        return 'CAN_NOT_FIND_FLAG';
+    }
+    flag.remove();
+    return 'OK';
+};
+/**
+ * 在控制台输出房间所有的 rampart 的平均血量
+ * @param roomName 房间名
+ * @returns 房间所有 rampart 的平均血量
+ */
+global.consoleAvgRampartHits = function (roomName) {
+    let room = Game.rooms[roomName];
+    let ramparts = _.filter(room.find(FIND_STRUCTURES), i => i.structureType == STRUCTURE_RAMPART);
+    let sum = 0;
+    for (let i = 0; i < ramparts.length; ++i) {
+        sum += ramparts[i].hits;
+    }
+    let avgHits = Math.floor((sum / ramparts.length) / 1000);
+    if (avgHits > 1000) {
+        return avgHits / 1000 + 'M';
+    }
+    return avgHits + 'K';
+};
+
 const MyMemory = {
     run: function () {
         this.reset();
@@ -197,7 +255,7 @@ const spawns = {
      * @param room
      * @returns {boolean} 第一个 spawn 是否空闲
      */
-    isFreeFirstSpawn: function (room, role) {
+    isFreeFirstSpawn: function (room) {
         let spawn = room.find(FIND_MY_SPAWNS)[0];
         if (spawn.spawning == null
             && Memory.spawns[spawn.name].spawnFree != Game.time) {
@@ -292,12 +350,12 @@ const outerSource = function (context) {
      */
     const createHarvesterBody = function (room) {
         let energy = room.energyCapacityAvailable;
-        let bodys = [WORK, WORK, CARRY, MOVE];
+        let bodys = [WORK, WORK, MOVE];
         if (energy >= 800) {
-            bodys = [WORK, WORK, WORK, WORK, WORK, WORK, CARRY, MOVE, MOVE, MOVE];
+            bodys = [WORK, WORK, WORK, WORK, WORK, WORK, MOVE, MOVE, MOVE];
             return bodys;
         }
-        const consume = 300;
+        const consume = 250;
         let times = Math.floor((energy - consume) / 250);
         for (let i = 0; i < times; ++i) {
             bodys.push(WORK, WORK, MOVE);
@@ -316,7 +374,7 @@ const outerSource = function (context) {
         }
         let bodys = [];
         let carryNum = Math.floor(energy / 150);
-        carryNum = carryNum >= 48 ? 48 : carryNum;
+        carryNum = carryNum >= 15 ? 15 : carryNum;
         for (let i = 0; i < carryNum; ++i) {
             bodys.push(CARRY, CARRY, MOVE);
         }
@@ -335,8 +393,9 @@ const outerSource = function (context) {
      * @returns {BodyPartConstant[]} 外矿建筑师的身体部件数组
      */
     const createOuterBuilderBody = function (room) {
-        let energy = room.energyCapacityAvailable;
+        let energy = room.energyAvailable;
         let bodysNum = Math.floor(energy / 200);
+        bodysNum = bodysNum > 3 ? 3 : bodysNum;
         let body = [];
         for (let i = 0; i < bodysNum; ++i) {
             body.push(WORK, CARRY, MOVE);
@@ -626,16 +685,6 @@ const outerSource = function (context) {
             return;
         }
         // 尝试采集能量矿
-        let container = creep.pos.findInRange(FIND_STRUCTURES, 1).filter(i => i.structureType == STRUCTURE_CONTAINER);
-        if (container[0] != undefined) {
-            if (creep.getActiveBodyparts(WORK) * 4 >
-                creep.store.getFreeCapacity()) {
-                let result = creep.transfer(container[0], RESOURCE_ENERGY);
-                if (result == ERR_FULL) {
-                    return;
-                }
-            }
-        }
         creep.harvest(source);
         return;
     };
@@ -701,17 +750,13 @@ const outerSource = function (context) {
                 });
                 return;
             }
-            // 在非工作模式下，从 container 或地上掉落的资源中获取能量
-            // 获取能量矿旁边的 container 对象
-            let container = source.pos.findInRange(FIND_STRUCTURES, 2, {
-                filter: s => s.structureType == STRUCTURE_CONTAINER
-            })[0];
+            // 在非工作模式下，从 地上掉落的资源中获取能量
             // 获取 source 旁边掉落的资源对象
             let resource = source.pos.findInRange(FIND_DROPPED_RESOURCES, 1, {
                 filter: s => s.resourceType == RESOURCE_ENERGY
             })[0];
-            // 如果没有找到 container 对象，则向 source 移动
-            if (!container && !resource) {
+            // 如果没有找到 resource 对象，则向 source 移动
+            if (!resource) {
                 if (creep.pos.getRangeTo(source) < 3) {
                     return;
                 }
@@ -721,24 +766,11 @@ const outerSource = function (context) {
                 return;
             }
             // 尝试从 container 中取出能量
-            let result = 0;
-            if (container) {
-                result = creep.withdraw(container, RESOURCE_ENERGY);
-                // 如果不在范围内，则向 container 移动
-                if (result == ERR_NOT_IN_RANGE) {
-                    creep.moveTo(container, {
-                        maxOps: 1000,
-                    });
-                }
-            }
-            else {
-                result = creep.pickup(resource);
+            if (creep.pickup(resource) == ERR_NOT_IN_RANGE) {
                 // 如果不在范围内，则向 resource 移动
-                if (result == ERR_NOT_IN_RANGE) {
-                    creep.moveTo(resource, {
-                        maxOps: 1000,
-                    });
-                }
+                creep.moveTo(resource, {
+                    maxOps: 1000,
+                });
             }
         }
         return;
@@ -849,12 +881,14 @@ const outerSource = function (context) {
             }
             return;
         }
-        let repairs = creep.pos.findInRange(FIND_STRUCTURES, 1).filter(i => i.hits < i.hitsMax);
+        let repairs = creep.pos.findInRange(FIND_STRUCTURES, 1).filter(i => i.hits < i.hitsMax
+            && i.structureType == STRUCTURE_ROAD);
         if (repairs[0] != undefined) {
             creep.repair(repairs[0]);
             return;
         }
-        let repairTargets = _.filter(room.find(FIND_STRUCTURES), i => i.hits < i.hitsMax);
+        let repairTargets = _.filter(room.find(FIND_STRUCTURES), i => i.hits < i.hitsMax
+            && i.structureType == STRUCTURE_ROAD);
         let repairTarget = creep.pos.findClosestByRange(repairTargets);
         if (repairTarget != undefined) {
             if (creep.repair(repairTarget) == ERR_NOT_IN_RANGE) {
@@ -874,7 +908,7 @@ const outerSource = function (context) {
             }
             Memory.delayTime['outerBuilder' + room.name] = {
                 time: Game.time,
-                delay: 2000,
+                delay: 10000,
             };
         }
         return;
@@ -903,11 +937,6 @@ const Withdraw = {
                 targets.push(storage);
             }
         }
-        if (room.terminal != undefined) {
-            if (room.terminal.store["energy"] >= 100000) {
-                targets.push(room.terminal);
-            }
-        }
         let target = creep.pos.findClosestByRange(targets);
         if (target != undefined) ;
         else {
@@ -933,13 +962,7 @@ const build = {
         let sites = room.find(FIND_CONSTRUCTION_SITES);
         let builders = _.filter(Game.creeps, (creep) => creep.memory.role
             == "builder");
-        if (sites.length == 0) {
-            for (let i = 0; i < builders.length; ++i) {
-                this.goRecycle(builders[i], room);
-            }
-            return;
-        }
-        if (builders.length < 1) {
+        if (builders.length < 1 && sites.length != 0) {
             this.newBuilder(room);
         }
         for (let i = 0; i < builders.length; ++i) {
@@ -993,6 +1016,10 @@ const build = {
     runBuilder: function (creep, room) {
         if (MyMemory.upateWorking(creep, "energy")) {
             let sites = room.find(FIND_CONSTRUCTION_SITES);
+            if (sites.length == 0) {
+                creep.memory.role = 'waller';
+                return;
+            }
             if (creep.build(sites[0]) == ERR_NOT_IN_RANGE) {
                 creep.moveTo(sites[0]);
             }
@@ -1016,37 +1043,6 @@ const build = {
     },
 };
 
-const towers = {
-    repair: function (target, room) {
-        let towers = _.filter(room.find(FIND_STRUCTURES), (i) => i.structureType == "tower");
-        let enemy = room.find(FIND_HOSTILE_CREEPS);
-        if (enemy[0] != undefined) {
-            return;
-        }
-        for (let i = 0; i < towers.length; ++i) {
-            let tower = towers[i];
-            tower.repair(target);
-        }
-        return;
-    },
-    defend: function (room) {
-        let towers = _.filter(room.find(FIND_STRUCTURES), (i) => i.structureType == "tower");
-        let enemy = room.find(FIND_HOSTILE_CREEPS);
-        if (enemy[0] == undefined) {
-            return;
-        }
-        enemy = _.filter(enemy, i => i.pos.findInRange(FIND_EXIT, 2).length == 0);
-        if (enemy[0] == undefined) {
-            return;
-        }
-        for (let i = 0; i < towers.length; ++i) {
-            let tower = towers[i];
-            tower.attack(enemy[0]);
-        }
-        return;
-    },
-};
-
 const Defend = {
     run: function (room) {
         let enemy = room.find(FIND_HOSTILE_CREEPS);
@@ -1060,7 +1056,6 @@ const Defend = {
             controller.activateSafeMode();
             Game.notify("SF ON");
         }
-        towers.defend(room);
     }
 };
 
@@ -1144,10 +1139,6 @@ const FastUpgrade = {
     goHarvest: function (creep, room) {
         let sources = room.find(FIND_SOURCES);
         let source = sources.find(i => creep.name.indexOf(i.id) != -1);
-        if (source == undefined) {
-            creep.say("ERR_NOT_FOUND_SOURCE");
-            return;
-        }
         if (creep.harvest(source) == ERR_NOT_IN_RANGE) {
             creep.moveTo(source);
         }
@@ -1238,21 +1229,30 @@ const harvest = {
      * @param room 执行采集任务的房间
      */
     run: function (room) {
-        let sources = room.find(FIND_SOURCES);
-        let harvesters = _.filter(room.find(FIND_MY_CREEPS), (creep) => creep.memory.role == "harvester");
-        if (harvesters.length < sources.length) {
-            for (let i = 0; i < sources.length; ++i) {
-                let id = sources[i].id;
-                if (!harvesters.find(creep => creep.memory.source.id == id)) {
-                    this.newHarvester(room, id);
+        this.checkSpawnCreep(room);
+        let creeps = _.filter(room.find(FIND_MY_CREEPS), (creep) => creep.memory.role == "harvester"
+            || creep.memory.role == 'mineraler');
+        for (let i = 0; i < creeps.length; ++i) {
+            switch (creeps[i].memory.role) {
+                case 'harvester':
+                    this.runHarvester(creeps[i]);
                     break;
-                }
+                case 'mineraler':
+                    this.runMineraler(creeps[i], room);
+                    break;
             }
         }
-        for (let i = 0; i < harvesters.length; ++i) {
-            this.runHarvester(harvesters[i]);
-        }
         return;
+    },
+    calSourcePath: function (room) {
+        let sources = room.find(FIND_SOURCES);
+        if (sources.length < 2) {
+            return 0;
+        }
+        let res = room.findPath(sources[0].pos, sources[1].pos, {
+            ignoreCreeps: true,
+        });
+        return res.length;
     },
     /**
      * 返回 harvester 的名字
@@ -1263,6 +1263,9 @@ const harvest = {
     createHarvesterName: function (room) {
         return 'harvester' + room.name + '_' + Game.time % 10;
     },
+    createMineralName: function (room) {
+        return 'mineraler' + room.name + '_' + Game.time % 10;
+    },
     /**
      * 返回 harvester 的身体部件数组
      * @param room 生产 harvester 的房间
@@ -1270,11 +1273,22 @@ const harvest = {
      */
     createHarvesterBody: function (room) {
         let energy = room.energyAvailable;
-        let bodys = [WORK, WORK, CARRY, MOVE];
-        const consume = 300;
+        let bodys = [CARRY, MOVE];
+        let consume = 100;
+        if (room.controller.level >= 5) {
+            bodys.push(CARRY);
+            consume += 50;
+        }
         let times = Math.floor((energy - consume) / 250);
-        if (times >= 3)
-            times = 3;
+        for (let i = 0; i < times; ++i) {
+            bodys.push(WORK, WORK, MOVE);
+        }
+        return bodys;
+    },
+    createMineralBody: function (room) {
+        let energy = room.energyAvailable;
+        let bodys = [];
+        let times = Math.floor(energy / 250);
         for (let i = 0; i < times; ++i) {
             bodys.push(WORK, WORK, MOVE);
         }
@@ -1297,6 +1311,49 @@ const harvest = {
                 source: { id: sourceId, pos: source.pos },
             },
             directions: [TOP_LEFT, LEFT, BOTTOM_LEFT], });
+        return;
+    },
+    newMineral: function (room) {
+        let spawn = returnFreeSpawn(room);
+        if (spawn == undefined) {
+            return;
+        }
+        room.find(FIND_MINERALS)[0];
+        let name = this.createMineralName(room);
+        let body = this.createMineralBody(room);
+        let memory = {
+            role: 'mineraler',
+            bornRoom: room.name,
+        };
+        spawn.spawnCreep(body, name, {
+            memory,
+            directions: [TOP_LEFT, LEFT, BOTTOM_LEFT],
+        });
+        return;
+    },
+    checkSpawnCreep: function (room) {
+        let sources = room.find(FIND_SOURCES);
+        let harvesters = _.filter(room.find(FIND_MY_CREEPS), i => i.memory.role == 'harvester');
+        if (harvesters.length < sources.length) {
+            for (let i = 0; i < sources.length; ++i) {
+                let id = sources[i].id;
+                if (!harvesters.find(creep => creep.memory.source.id == id)) {
+                    if (sources[i].energy != 0) {
+                        this.newHarvester(room, id);
+                        break;
+                    }
+                }
+            }
+        }
+        let extractor = _.find(room.find(FIND_STRUCTURES), i => i.structureType == STRUCTURE_EXTRACTOR);
+        if (room.controller.level < 6 || !extractor) {
+            return;
+        }
+        let mineraler = _.find(room.find(FIND_MY_CREEPS), i => i.memory.role == 'mineraler');
+        let mineral = room.find(FIND_MINERALS)[0];
+        if (mineraler == undefined && mineral.mineralAmount != 0) {
+            this.newMineral(room);
+        }
         return;
     },
     /**
@@ -1336,7 +1393,7 @@ const harvest = {
         if (extensions.length == 0) {
             return false;
         }
-        if (creep.store[RESOURCE_ENERGY] < creep.store.getCapacity()) {
+        if (creep.store[RESOURCE_ENERGY] < 50) {
             return this.withdrawEnergy(creep) ? true : false;
         }
         creep.transfer(extensions[0], RESOURCE_ENERGY);
@@ -1368,7 +1425,7 @@ const harvest = {
      * @returns {boolean} 是否成功执行运输任务
      */
     transferOut: function (creep) {
-        if (creep.store.getFreeCapacity() >= creep.getActiveBodyparts(WORK) * 4) {
+        if (creep.store.getFreeCapacity() > creep.getActiveBodyparts(WORK) * 2) {
             return false;
         }
         let link = _.find(creep.pos.findInRange(FIND_STRUCTURES, 1), i => i.structureType == STRUCTURE_LINK);
@@ -1383,362 +1440,281 @@ const harvest = {
         }
         return false;
     },
-};
-
-const Carrier = {
-    goTransfer: function (creep, room, target, transfered, costs) {
-        const resouceType = Object.keys(creep.store)[0];
-        if (resouceType != "energy") {
-            if (room.storage == undefined) {
-                return false;
-            }
-            if (creep.transfer(room.storage, resouceType)
-                == ERR_NOT_IN_RANGE) {
-                creep.moveTo(room.storage);
-                return false;
-            }
-        }
-        if (transfered || creep.transfer(target, resouceType)
-            == ERR_NOT_IN_RANGE) {
-            creep.moveTo(target);
-            return false;
-        }
-        if (target.store.getFreeCapacity("energy") >= creep.store[resouceType]) {
-            creep.memory.working = false;
-        }
-        return true;
-    },
-    goWithdrawEnergy: function (creep, room, costs) {
-        let amount = creep.store.getFreeCapacity();
-        if (amount == 0) {
+    runMineraler: function (creep, room) {
+        let mineral = room.find(FIND_MINERALS)[0];
+        let container = _.find(room.find(FIND_STRUCTURES), i => i.structureType == STRUCTURE_CONTAINER
+            && i.pos.getRangeTo(mineral) == 1);
+        if (container == undefined) {
+            creep.moveTo(mineral);
             return;
         }
-        let containers = _.filter(room.find(FIND_STRUCTURES), (i) => i.structureType == "container"
-            && (i.store["energy"] >= amount || i.store["energy"] >= 500)
-            && i.pos.findInRange(FIND_SOURCES, 2)[0] != undefined);
-        let links = _.filter(room.find(FIND_STRUCTURES), (i) => i.structureType == "link"
-            && i.store["energy"] >= 100
-            && i.pos.findInRange(FIND_SOURCES, 2).length == 0
-            && i.pos.getRangeTo(room.controller) > 3
-            && i.pos.getRangeTo(room.find(FIND_MY_SPAWNS)[0]) != 1);
-        let targets = [...containers, ...links];
-        if (room.terminal != undefined) {
-            if (room.terminal.store["energy"] >= 100000) {
-                targets.push(room.terminal);
-            }
-        }
-        if (targets.length == 0) {
-            if (room.storage != undefined) {
-                if (room.storage.store["energy"] >= amount) {
-                    targets.push(room.storage);
-                }
-            }
-        }
-        let target = creep.pos.findClosestByRange(targets);
-        if (target != undefined) ;
-        else {
+        if (!creep.pos.isEqualTo(container)) {
+            creep.moveTo(container);
             return;
         }
-        if (target instanceof Resource) {
-            if (creep.pickup(target) == ERR_NOT_IN_RANGE) {
-                creep.moveTo(target);
-            }
-            return;
-        }
-        else {
-            if (creep.withdraw(target, "energy") == ERR_NOT_IN_RANGE) {
-                creep.moveTo(target);
-            }
-        }
-        return;
-    }
-};
-
-const links = {
-    transferEnergy: function (room) {
-        let links = _.filter(room.find(FIND_STRUCTURES), i => i.structureType == "link");
-        let link = _.find(links, i => i.pos.findInRange(room.find(FIND_SOURCES), 2).length == 0
-            && i.pos.getRangeTo(room.find(FIND_MY_SPAWNS)[0]) != 1);
-        if (link == undefined) {
-            return;
-        }
-        links.splice(links.indexOf(link), 1);
-        for (let i = 0; i < links.length; ++i) {
-            if (links[i].store["energy"] >= 100) {
-                links[i].transferEnergy(link);
-            }
+        if (container.store.getFreeCapacity()
+            >= creep.getActiveBodyparts(WORK)) {
+            creep.harvest(mineral);
         }
         return;
     },
 };
 
-const MineralCarrier = {
-    run: function (room) {
-        var _a;
-        let extractor = _.find(room.find(FIND_STRUCTURES), i => i.structureType == "extractor");
-        if (extractor == undefined) {
-            return;
-        }
-        let creep = _.filter(room.find(FIND_MY_CREEPS), i => i.memory.role == "mineralCarrier")[0];
-        if (creep == undefined) {
-            let newListPush = {
-                role: "mineralCarrier",
-                bodys: [CARRY, CARRY, CARRY, CARRY, CARRY, CARRY,
-                    CARRY, CARRY, CARRY, CARRY, CARRY, CARRY,
-                    MOVE, MOVE, MOVE,
-                    MOVE, MOVE, MOVE],
-            };
-            SpawnCreep.newList.push(newListPush);
-            return;
-        }
-        if (room.terminal != undefined) {
-            let store = _.filter(Object.keys(room.terminal.store), i => i != "energy" && i != "LO")[0];
-            if (store != undefined) {
-                if (creep.store.getCapacity() == creep.store.getUsedCapacity()) {
-                    let amount = creep.store[store];
-                    if (creep.transfer(room.storage, store, amount) == ERR_NOT_IN_RANGE) {
-                        creep.moveTo(room.storage);
-                    }
-                }
-                else if (creep.withdraw(room.terminal, store) == ERR_NOT_IN_RANGE) {
-                    creep.moveTo(room.terminal);
-                }
-                return;
-            }
-        }
-        let container = room.find(FIND_MINERALS)[0].pos
-            .findInRange(room.find(FIND_STRUCTURES), 1).filter(i => i.structureType == "container")[0];
-        if (container.store.getUsedCapacity() > 200) {
-            let store = _.filter(Object.keys(container.store), i => i != "energy")[0];
-            if (creep.store.getCapacity() == creep.store.getUsedCapacity()) {
-                let store = Object.keys(creep.store)[0];
-                let amount = creep.store[store];
-                if (creep.transfer(room.storage, store, amount) == ERR_NOT_IN_RANGE) {
-                    creep.moveTo(room.storage);
-                }
-                return;
-            }
-            else if (creep.withdraw(container, store) == ERR_NOT_IN_RANGE) {
-                creep.moveTo(container);
-            }
-            return;
-        }
-        let labs = _.filter(room.find(FIND_STRUCTURES), i => i.structureType == "lab");
-        let noCdLab = _.find(labs, i => i.cooldown == 0);
-        if (labs.length <= 3) {
-            noCdLab = labs[0];
-        }
-        if (noCdLab == undefined) {
-            return;
-        }
-        labs.splice(labs.indexOf(noCdLab), 1);
-        if (noCdLab == undefined) {
-            return;
-        }
-        let store = Object.keys(noCdLab.store).find(i => i != "energy" && i != "LO");
-        if (store != undefined) {
-            if (creep.store.getUsedCapacity() > 0) {
-                let store = Object.keys(creep.store)[0];
-                let amount = creep.store[store];
-                if (creep.transfer(room.storage, store, amount) == ERR_NOT_IN_RANGE) {
-                    creep.moveTo(room.storage);
-                }
-                return;
-            }
-            if (creep.withdraw(noCdLab, store) == ERR_NOT_IN_RANGE) {
-                creep.moveTo(noCdLab);
-            }
-            return;
-        }
-        if (labs[0].store["O"] <= 1000) {
-            let store = Object.keys(labs[0].store).find(i => i != "energy" && i != "O");
-            if (store != undefined) {
-                if (creep.withdraw(labs[0], store) == ERR_NOT_IN_RANGE) {
-                    creep.moveTo(labs[0]);
-                }
-                return;
-            }
-            if (creep.store["O"] == 0) {
-                if (creep.store.getUsedCapacity() == creep.store.getCapacity()) {
-                    let store = "O";
-                    if (creep.transfer(room.storage, store) == ERR_NOT_IN_RANGE) {
-                        creep.moveTo(room.storage);
-                    }
-                    return;
-                }
-                if (creep.withdraw(room.storage, "O") == ERR_NOT_IN_RANGE) {
-                    creep.moveTo(room.storage);
-                }
-                return;
-            }
-            if (creep.transfer(labs[0], "O") == ERR_NOT_IN_RANGE) {
-                creep.moveTo(labs[0]);
-            }
-            return;
-        }
-        if (labs[1].store["L"] <= 1000) {
-            let store = Object.keys(labs[1].store).find(i => i != "energy" && i != "L");
-            if (store != undefined) {
-                if (creep.withdraw(labs[1], store) == ERR_NOT_IN_RANGE) {
-                    creep.moveTo(labs[1]);
-                }
-                return;
-            }
-            if (creep.store["L"] == 0) {
-                if (creep.store.getUsedCapacity() == creep.store.getCapacity()) {
-                    let store = "L";
-                    if (creep.transfer(room.storage, store) == ERR_NOT_IN_RANGE) {
-                        creep.moveTo(room.storage);
-                    }
-                    return;
-                }
-                if (creep.withdraw(room.storage, "L") == ERR_NOT_IN_RANGE) {
-                    creep.moveTo(room.storage);
-                }
-                return;
-            }
-            if (creep.transfer(labs[1], "L") == ERR_NOT_IN_RANGE) {
-                creep.moveTo(labs[1]);
-            }
-            return;
-        }
-        if (room.terminal != undefined) {
-            if (((_a = room.terminal) === null || _a === void 0 ? void 0 : _a.store["LO"]) < 10000) {
-                let storage = room.storage;
-                if (creep.store["LO"] == 0) {
-                    if (creep.store.getUsedCapacity()
-                        == creep.store.getCapacity()) {
-                        let store = Object.keys(creep.store)[0];
-                        let amount = creep.store[store];
-                        if (creep.transfer(room.storage, store, amount)
-                            == ERR_NOT_IN_RANGE) {
-                            creep.moveTo(storage);
-                        }
-                        return;
-                    }
-                    else if (creep.withdraw(storage, "LO") == ERR_NOT_IN_RANGE) {
-                        creep.moveTo(storage);
-                    }
-                    return;
-                }
-                else {
-                    if (creep.transfer(room.terminal, "LO") == ERR_NOT_IN_RANGE) {
-                        creep.moveTo(room.terminal);
-                    }
-                    return;
-                }
-            }
-        }
-        if (creep.store.getUsedCapacity() > 0) {
-            let store = Object.keys(creep.store)[0];
-            let amount = creep.store[store];
-            if (creep.transfer(room.storage, store, amount) == ERR_NOT_IN_RANGE) {
-                creep.moveTo(room.storage);
-            }
-            return;
-        }
-        store = "LO";
-        if (noCdLab.store[store] > 1000) {
-            if (creep.withdraw(noCdLab, "LO") == ERR_NOT_IN_RANGE) {
-                creep.moveTo(noCdLab);
-            }
-        }
+const transferTask = function (room) {
+    const run = function () {
+        checkSpawnCreep();
+        runCarrier();
+        runMineralCarrier();
         return;
-    },
-};
-
-const Transfer = {
-    run: function (room, costs) {
-        links.transferEnergy(room);
-        let carriers = _.filter(Game.creeps, (creep) => creep.memory.role
-            == "carrier");
+    };
+    const createCarrierName = function () {
+        return 'carrier' + room.name + '_' + Game.time % 10;
+    };
+    const createMineralCarrierName = function () {
+        return 'mineralCarrier' + room.name + '_' + Game.time % 10;
+    };
+    const createCarrierBody = function () {
+        let energy = room.energyAvailable;
+        if (energy <= 300) {
+            return [CARRY, CARRY, MOVE];
+        }
+        let bodys = [];
+        let bodysNum = Math.floor(energy / 150);
+        bodysNum = bodysNum >= 6 ? 6 : bodysNum;
+        for (let i = 0; i < bodysNum; ++i) {
+            bodys.push(CARRY, CARRY, MOVE);
+        }
+        return bodys;
+    };
+    const newCarrier = function () {
+        let spawn = returnFreeSpawn(room);
+        if (spawn == undefined) {
+            return;
+        }
+        let name = createCarrierName();
+        let body = createCarrierBody();
+        let memory = {
+            role: 'carrier',
+            bornRoom: room.name,
+        };
+        spawn.spawnCreep(body, name, {
+            memory,
+            directions: [TOP_LEFT, LEFT, BOTTOM_LEFT],
+        });
+        return;
+    };
+    const newMineralCarrier = function () {
+        let spawn = returnFreeSpawn(room);
+        if (spawn == undefined) {
+            return;
+        }
+        let name = createMineralCarrierName();
+        let body = createCarrierBody();
+        let memory = {
+            role: 'mineralCarrier',
+            bornRoom: room.name,
+        };
+        spawn.spawnCreep(body, name, {
+            memory,
+            directions: [TOP_LEFT, LEFT, BOTTOM_LEFT],
+        });
+        return;
+    };
+    const checkSpawnCreep = function () {
+        let carriers = _.filter(Game.creeps, (creep) => creep.memory.role == "carrier");
         if (carriers.length < 2) {
-            this.newCarrier(room);
+            newCarrier();
         }
-        let spawnPos = room.find(FIND_MY_SPAWNS)[0].pos;
-        let lookForCenterContainers = _.filter(room.lookForAtArea(LOOK_STRUCTURES, spawnPos.y - 2, spawnPos.x, spawnPos.y + 2, spawnPos.x + 2, true), i => i.structure.structureType == STRUCTURE_EXTENSION);
-        let centerContainers = lookForCenterContainers.map(i => i.structure.id);
+        let extractor = _.find(room.find(FIND_STRUCTURES), i => i.structureType == STRUCTURE_EXTRACTOR);
+        if (room.controller.level < 6 || !extractor) {
+            return;
+        }
+        let mineralCarriers = _.find(Game.creeps, (creep) => creep.memory.role == "mineralCarrier");
+        if (mineralCarriers == undefined) {
+            newMineralCarrier();
+        }
+        return;
+    };
+    const findTransferTarget = function () {
+        let centerSpawnPos = room.find(FIND_MY_SPAWNS)[0].pos;
+        let centerExtensions = _.filter(room.lookForAtArea(LOOK_STRUCTURES, centerSpawnPos.y - 2, centerSpawnPos.x, centerSpawnPos.y + 2, centerSpawnPos.x + 2, true), i => i.structure.structureType == STRUCTURE_EXTENSION).map(i => i.structure.id);
         let transferTargets = _.filter(room.find(FIND_STRUCTURES), (i) => "store" in i
             && i.store["energy"] < i.store.getCapacity("energy")
             && (i.structureType == "spawn"
                 || (i.structureType == "extension"
                     && i.pos.findInRange(FIND_SOURCES, 2).length == 0
-                    && !centerContainers.includes(i.id))
+                    && !centerExtensions.includes(i.id))
                 || (i.structureType == "tower" && i.store[RESOURCE_ENERGY] < 600)
-                || (i.structureType == "terminal" && i.store["energy"] < 50000)
-                || i.structureType == "lab"
+                || (i.structureType == "lab" && i.store[RESOURCE_ENERGY] < 1500)
                 || (i.structureType == "container"
                     && i.store[RESOURCE_ENERGY] < 1500
                     && i.pos.findInRange(FIND_SOURCES, 2).length == 0
                     && i.pos.findInRange(FIND_MINERALS, 1).length == 0)));
+        return transferTargets;
+    };
+    const findWithdrawTarget = function () {
+        let containers = _.filter(room.find(FIND_STRUCTURES), (i) => i.structureType == "container"
+            && i.store["energy"] > 0
+            && i.pos.findInRange(FIND_SOURCES, 2)[0] != undefined);
+        let storage = room.storage;
+        if (storage == undefined) {
+            return containers;
+        }
+        return [...containers, storage];
+    };
+    const runCarrier = function () {
+        let creeps = _.filter(Game.creeps, (creep) => creep.memory.role == "carrier");
+        let transferTargets = findTransferTarget();
+        let withdrawTargets = findWithdrawTarget();
         if (transferTargets.length == 0) {
-            if (room.storage != undefined) {
-                transferTargets.push(room.storage);
-            }
-            else {
-                return;
-            }
+            withdrawTargets.splice(withdrawTargets.indexOf(room.storage), 1);
         }
-        const unsplice = ["storage"];
-        let transfered = -1;
-        for (let i = 0; i < carriers.length; ++i) {
-            if (i != 0 && transferTargets[0] == undefined) {
+        for (let i = 0; i < creeps.length; ++i) {
+            let creep = creeps[i];
+            if (creeps[i].store.getUsedCapacity() == 0) {
+                let target = creeps[i].pos.findClosestByRange(withdrawTargets.filter(target => target.store[RESOURCE_ENERGY] >= creep.store.getFreeCapacity()));
+                if (target == undefined) {
+                    continue;
+                }
+                if (creep.withdraw(target, RESOURCE_ENERGY) == ERR_NOT_IN_RANGE) {
+                    creep.moveTo(target);
+                }
+                continue;
+            }
+            if (transferTargets.length == 0) {
                 if (room.storage != undefined) {
-                    transferTargets[0] = room.storage;
+                    transferTargets.push(room.storage);
                 }
             }
-            let carrier = carriers[i];
-            if (MyMemory.upateWorking(carrier, "energy")
-                && transferTargets[0] != undefined) {
-                let target = carrier.pos.
-                    findClosestByRange(transferTargets);
-                if (target != null) {
-                    carrier.say(target.structureType);
-                }
-                if (!unsplice.includes(target.structureType)) {
-                    transferTargets.splice(transferTargets.indexOf(target), 1);
-                }
-                if (Carrier.goTransfer(carrier, room, target, transfered == i, costs)) {
-                    if (target != room.storage
-                        && carrier.store["energy"]
-                            - target.store.getFreeCapacity(RESOURCE_ENERGY) >= 0) {
-                        transfered = i;
-                        --i;
-                    }
-                }
+            let target = creep.pos.findClosestByRange(transferTargets);
+            if (target == undefined) {
+                continue;
             }
-            else {
-                Carrier.goWithdrawEnergy(carrier, room, costs);
+            creep.say(target.structureType);
+            transferTargets.splice(transferTargets.indexOf(target), 1);
+            if (creep.transfer(target, RESOURCE_ENERGY) == ERR_NOT_IN_RANGE) {
+                creep.moveTo(target);
+                continue;
+            }
+            if (creep.store[RESOURCE_ENERGY]
+                - target.store.getFreeCapacity(RESOURCE_ENERGY) > 0) {
+                creep.store[RESOURCE_ENERGY]
+                    -= target.store.getFreeCapacity(RESOURCE_ENERGY);
+                --i;
             }
         }
-        MineralCarrier.run(room);
-    },
-    newCarrier: function (room) {
-        if (!returnFreeSpawn(room)) {
+    };
+    const runMineralCarrier = function () {
+        let creep = _.find(Game.creeps, (creep) => creep.memory.role == "mineralCarrier");
+        if (creep == undefined) {
             return;
         }
-        let newListPush = {
-            role: "carrier",
-            bodys: this.returnBodys(room),
-        };
-        SpawnCreep.newList.push(newListPush);
+        if (transferLab(creep) || withdrawLab(creep)) {
+            return;
+        }
+        let mineral = room.find(FIND_MINERALS)[0];
+        let container = _.find(room.find(FIND_STRUCTURES), i => i.structureType == STRUCTURE_CONTAINER
+            && i.pos.getRangeTo(mineral) == 1);
+        let resource = Object.keys(container.store)[0];
+        if (creep.store.getUsedCapacity() == 0) {
+            if (creep.withdraw(container, resource) == ERR_NOT_IN_RANGE) {
+                creep.moveTo(container);
+            }
+            else if (container.store.getUsedCapacity() == 0) {
+                if (creep.pos.getRangeTo(container) > 1) {
+                    creep.moveTo(container);
+                }
+            }
+            return;
+        }
+        transferStorage(creep);
         return;
-    },
-    returnBodys: function (room) {
-        let energy = room.energyAvailable;
-        if (energy <= 300) {
-            return [CARRY, MOVE];
+    };
+    const transferStorage = function (creep) {
+        let storage = room.storage;
+        if (storage == undefined) {
+            return;
         }
-        let bodys = [];
-        let carryNum = Math.floor(energy / 100) / 2;
-        carryNum = carryNum >= 12 ? 12 : carryNum;
-        for (let i = 0; i < carryNum; ++i) {
-            bodys.push(CARRY, MOVE);
+        let resource = Object.keys(creep.store)[0];
+        if (creep.transfer(storage, resource) == ERR_NOT_IN_RANGE) {
+            creep.moveTo(storage);
         }
-        return bodys;
-    },
-    getTransferTask: function (room) {
-    },
+        return;
+    };
+    const transferLab = function (creep) {
+        let labId = Memory.rooms[room.name].labId;
+        let substrateLabs = labId.substrateLabs.map(i => Game.getObjectById(i));
+        if (substrateLabs.length < 2) {
+            return false;
+        }
+        let reaction = Memory.rooms[room.name].labTask;
+        let resource1 = reaction.type.lab1;
+        let resource2 = reaction.type.lab2;
+        if (substrateLabs[0].store[resource1]
+            < reaction.amount
+            && substrateLabs[0].store[resource1]
+                < 2000) {
+            if (creep.store.getUsedCapacity() > 0) {
+                if (Object.keys(creep.store)[0] != reaction.type.lab1) {
+                    transferStorage(creep);
+                    return true;
+                }
+                if (creep.transfer(substrateLabs[0], resource1) == ERR_NOT_IN_RANGE) {
+                    creep.moveTo(substrateLabs[0]);
+                }
+                return true;
+            }
+            if (creep.withdraw(room.storage, resource1) == ERR_NOT_IN_RANGE) {
+                creep.moveTo(room.storage);
+            }
+            return true;
+        }
+        else if (substrateLabs[1].store[resource2]
+            < reaction.amount
+            && substrateLabs[1].store[resource2]
+                < 2000) {
+            if (creep.store.getUsedCapacity() > 0) {
+                if (Object.keys(creep.store)[0] != reaction.type.lab2) {
+                    transferStorage(creep);
+                    return true;
+                }
+                if (creep.transfer(substrateLabs[1], resource2) == ERR_NOT_IN_RANGE) {
+                    creep.moveTo(substrateLabs[1]);
+                }
+                return true;
+            }
+            if (creep.withdraw(room.storage, resource2) == ERR_NOT_IN_RANGE) {
+                creep.moveTo(room.storage);
+            }
+            return true;
+        }
+        else {
+            return false;
+        }
+    };
+    const withdrawLab = function (creep) {
+        let labId = Memory.rooms[room.name].labId;
+        let reactionLabs = labId.reactionLabs.map(i => Game.getObjectById(i));
+        if (reactionLabs.length < 1) {
+            return false;
+        }
+        for (let i = 0; i < reactionLabs.length; ++i) {
+            let resource = Object.keys(reactionLabs[i].store).find(i => i != RESOURCE_ENERGY);
+            if (!resource || reactionLabs[i].store[resource] < 1000) {
+                continue;
+            }
+            if (creep.store.getUsedCapacity() > 0) {
+                transferStorage(creep);
+                return true;
+            }
+            if (creep.withdraw(reactionLabs[i], resource) == ERR_NOT_IN_RANGE) {
+                creep.moveTo(reactionLabs[i]);
+            }
+            return true;
+        }
+        return false;
+    };
+    run();
 };
 
 const Upgrader = {
@@ -1861,26 +1837,77 @@ const RoomVisual = {
     },
 };
 
-const Repair = {
-    run: function (room) {
-        let roomTowers = _.filter(room.find(FIND_STRUCTURES), (i) => i.structureType == "tower");
-        if (roomTowers.length > 0) {
-            let creep = _.find(room.find(FIND_MY_CREEPS), i => i.hits < i.hitsMax);
-            if (creep != undefined) {
-                roomTowers[0].heal(creep);
-                return;
-            }
-            let structures = room.find(FIND_STRUCTURES).filter(i => i.hits < i.hitsMax
-                && i.structureType != STRUCTURE_WALL
-                && i.structureType != STRUCTURE_RAMPART
-                || (i.structureType == STRUCTURE_RAMPART && i.hits < 1000));
-            structures.sort((a, b) => a.hits - b.hits);
-            for (let i = 0; i < structures.length && i < roomTowers.length; ++i) {
-                towers.repair(structures[i], room);
-            }
+const repair = function (room) {
+    const run = function () {
+        let wallers = _.filter(room.find(FIND_MY_CREEPS), i => i.memory.role == 'waller'
+            && i.memory.bornRoom == room.name);
+        if (wallers.length < 3) {
+            newWaller();
+        }
+        for (let i = 0; i < wallers.length; ++i) {
+            runWaller(wallers[i]);
         }
         return;
-    },
+    };
+    const createWallerName = function () {
+        return 'waller' + room.name + '_' + Game.time % 10;
+    };
+    const createWallerBody = function () {
+        let energy = room.energyAvailable;
+        let bodys = [];
+        const consume = 200;
+        let times = Math.floor(energy / consume);
+        for (let i = 0; i < times; ++i) {
+            bodys.push(WORK, CARRY, MOVE);
+        }
+        return bodys;
+    };
+    const newWaller = function () {
+        let spawn = returnFreeSpawn(room);
+        if (spawn == undefined) {
+            return;
+        }
+        let name = createWallerName();
+        let body = createWallerBody();
+        spawn.spawnCreep(body, name, {
+            memory: { role: 'waller', bornRoom: room.name },
+            directions: [TOP_LEFT, LEFT, BOTTOM_LEFT],
+        });
+        return;
+    };
+    const runWaller = function (creep) {
+        if (creep.store[RESOURCE_ENERGY] == 0) {
+            Withdraw.energy(creep, room);
+            return;
+        }
+        if (creep.memory.repairTarget != undefined) {
+            let target = Game.getObjectById(creep.memory.repairTarget);
+            if (target == undefined) {
+                creep.memory.repairTarget = undefined;
+            }
+            else if (target.hits == target.hitsMax) {
+                creep.memory.repairTarget = undefined;
+            }
+            else {
+                if (creep.repair(target) == ERR_NOT_IN_RANGE) {
+                    creep.moveTo(target);
+                }
+                return;
+            }
+        }
+        let structures = room.find(FIND_STRUCTURES).filter(i => i.structureType == "rampart");
+        let targets = structures.filter(i => i.hits < i.hitsMax);
+        targets.sort((a, b) => a.hits - b.hits);
+        if (targets[0] == undefined) {
+            return;
+        }
+        creep.memory.repairTarget = targets[0].id;
+        if (creep.repair(targets[0]) == ERR_NOT_IN_RANGE) {
+            creep.moveTo(targets[0]);
+        }
+        return;
+    };
+    run();
 };
 
 const centerTransfer = {
@@ -1893,30 +1920,26 @@ const centerTransfer = {
         if (room.controller.level < 4) {
             return;
         }
-        // 只在第一个 spawn 产中央运输爬
-        let spawn = room.find(FIND_MY_SPAWNS)[0];
         // 检查是否需要生成新的运输爬
-        this.checkSpawnCreep(spawn, room);
+        this.checkSpawnCreep(room);
         // 遍历找到所有中央爬
         let centerTransferer = _.filter(room.find(FIND_MY_CREEPS), i => i.memory.role == "centerTransferer");
         // 执行任务
         for (let i = 0; i < centerTransferer.length; ++i) {
             this.runCenterTransferer(centerTransferer[i], room);
         }
-        let link = _.find(room.find(FIND_STRUCTURES), i => i.structureType == STRUCTURE_LINK
-            && i.pos.getRangeTo(spawn) == 1);
-        if (link == undefined) {
-            return;
-        }
-        this.runCenterLink(link, room);
         return;
     },
     /**
      * 返回中央运输爬的身体
      * @returns {BodyPartConstant[]} 运输爬的身体
      */
-    createTransfererBody: function (room) {
-        let carryNum = room.controller.level - 3;
+    createCenterTransfererBody: function (room) {
+        if (room.controller.level < 6) {
+            return [CARRY];
+        }
+        let carryNum = room.energyAvailable / 50;
+        carryNum = carryNum > 10 ? 10 : carryNum;
         let bodys = [];
         for (let i = 0; i < carryNum; ++i) {
             bodys.push(CARRY);
@@ -1927,32 +1950,38 @@ const centerTransfer = {
      * 返回中央运输爬的名字
      * @returns {string} 运输爬的名字
      */
-    createTransfererName: function (room) {
+    createCenterTransfererName: function (room) {
         return "centerTransferer" + room.name + '_' + Game.time % 10;
+    },
+    newCenterTransferer: function (room) {
+        let spawn = spawns.isFreeFirstSpawn(room);
+        if (!spawn) {
+            return;
+        }
+        let name = this.createCenterTransfererName(room);
+        let body = this.createCenterTransfererBody(room);
+        let memory = {
+            role: 'centerTransferer',
+            bornRoom: room.name,
+        };
+        spawn.spawnCreep(body, name, {
+            memory: memory,
+            directions: [TOP_RIGHT, BOTTOM_RIGHT],
+        });
+        return;
     },
     /**
      * 检查是否需要生产新的中央运输爬
      * @param spawn 执行生产任务的 spawn
      * @param room 执行任务的房间
      */
-    checkSpawnCreep: function (spawn, room) {
+    checkSpawnCreep: function (room) {
         let centerTransferer = _.filter(room.find(FIND_MY_CREEPS), i => i.memory.role == "centerTransferer");
         if (centerTransferer.length < 2) {
-            if (!spawns.isFreeFirstSpawn(room, 'centerTransferer')) {
-                return;
-            }
-            let name = this.createTransfererName(room);
-            let body = this.createTransfererBody(room);
-            let memory = {
-                role: 'centerTransferer',
-                bornRoom: room.name,
-            };
-            spawn.spawnCreep(body, name, {
-                memory: memory,
-                directions: [TOP_RIGHT, BOTTOM_RIGHT],
-            });
+            this.newCenterTransferer(room);
             return;
         }
+        return;
     },
     /**
      * 中央运输爬执行运输任务
@@ -1960,42 +1989,351 @@ const centerTransfer = {
      * @param room 执行任务的房间
      */
     runCenterTransferer: function (creep, room) {
-        if (creep.store[RESOURCE_ENERGY] == 0) {
-            let targets = creep.pos.findInRange(FIND_STRUCTURES, 1).filter(i => "store" in i
-                && i.store[RESOURCE_ENERGY] > 0
-                && (i.structureType == STRUCTURE_CONTAINER
-                    || i.structureType == STRUCTURE_STORAGE
-                    || i.structureType == STRUCTURE_TERMINAL));
-            creep.withdraw(targets[0], RESOURCE_ENERGY);
+        if (this.transferEnergy(creep, room)) {
+            return;
+        }
+        if (!room.terminal || creep.pos.getRangeTo(room.terminal) > 1) {
+            return;
+        }
+        if (creep.store.getUsedCapacity() > 0) {
+            this.transferResource(creep, room, room.terminal);
         }
         else {
-            let targets = creep.pos.findInRange(FIND_STRUCTURES, 1).filter(i => "store" in i
-                && i.store.getFreeCapacity(RESOURCE_ENERGY) > 0
-                && (i.structureType == STRUCTURE_EXTENSION
-                    || i.structureType == STRUCTURE_SPAWN));
-            creep.transfer(targets[0], RESOURCE_ENERGY);
+            this.withdrawResource(creep, room, room.terminal);
         }
         return;
     },
-    /**
-     * 将中央 Link 的能量传送至升级 Link
-     * @param link 中央运输 Link
-     * @param room 执行运输任务的房间
-     */
-    runCenterLink: function (link, room) {
-        if (link.store[RESOURCE_ENERGY] < 400) {
+    withdrawEnergy: function (creep, room) {
+        let terminalEnergy = Memory.rooms[room.name].terminalTask.energy;
+        let centerLink = Game.getObjectById(Memory.rooms[room.name].centerLink);
+        let target = centerLink != undefined
+            && centerLink.store[RESOURCE_ENERGY] > 50
+            && room.storage
+            && (creep.pos.getRangeTo(room.storage) != 1
+                || centerLink.store[RESOURCE_ENERGY] > 400)
+            ? centerLink : creep.pos.findInRange(FIND_STRUCTURES, 1).filter(i => "store" in i
+            && i.store[RESOURCE_ENERGY] > 0
+            && (i.structureType == STRUCTURE_CONTAINER
+                || (i.structureType == STRUCTURE_LINK
+                    && room.storage
+                    && creep.pos.getRangeTo(room.storage) == 1)
+                || (i.structureType == STRUCTURE_STORAGE
+                    && i.store[RESOURCE_ENERGY] >= creep.store.getFreeCapacity()
+                    && !(room.terminal
+                        && room.terminal.store[RESOURCE_ENERGY] > terminalEnergy))
+                || (i.structureType == STRUCTURE_TERMINAL
+                    && i.store[RESOURCE_ENERGY] > terminalEnergy)))[0];
+        if (target == undefined) {
             return;
         }
-        let upgradeLink = _.find(room.find(FIND_STRUCTURES), i => i.structureType == STRUCTURE_LINK
-            && i.pos.getRangeTo(room.controller) <= 3);
-        if (upgradeLink == undefined) {
+        if (target.structureType == STRUCTURE_TERMINAL) {
+            let amount = target.store[RESOURCE_ENERGY] - terminalEnergy;
+            amount = amount > creep.store.getFreeCapacity() ?
+                creep.store.getFreeCapacity() : amount;
+            creep.withdraw(target, RESOURCE_ENERGY, amount);
             return;
         }
-        if (upgradeLink.store[RESOURCE_ENERGY] <= 400) {
-            link.transferEnergy(upgradeLink);
+        else if (target.structureType == STRUCTURE_LINK) {
+            if (creep.pos.getRangeTo(room.storage) == 1) {
+                let amount = target.store[RESOURCE_ENERGY] - 400;
+                amount = creep.store.getFreeCapacity() < amount ?
+                    creep.store.getFreeCapacity() : amount;
+                creep.withdraw(target, RESOURCE_ENERGY, amount);
+            }
+            else {
+                creep.withdraw(target, RESOURCE_ENERGY);
+            }
+            return;
+        }
+        creep.withdraw(target, RESOURCE_ENERGY);
+        return;
+    },
+    transferEnergy: function (creep, room) {
+        let terminalEnergy = Memory.rooms[room.name].terminalTask.energy;
+        let centerLink = Game.getObjectById(Memory.rooms[room.name].centerLink);
+        let target = creep.pos.findInRange(FIND_STRUCTURES, 1).filter(i => "store" in i
+            && i.store.getFreeCapacity(RESOURCE_ENERGY) > 0
+            && (i.structureType == STRUCTURE_EXTENSION
+                || i.structureType == STRUCTURE_LINK
+                    && i.store[RESOURCE_ENERGY] < 400
+                || i.structureType == STRUCTURE_SPAWN
+                || (i.structureType == STRUCTURE_STORAGE
+                    && (i.store[RESOURCE_ENERGY] < 50000
+                        || room.terminal
+                            && room.terminal.store[RESOURCE_ENERGY] > terminalEnergy
+                        || centerLink
+                            && centerLink.store[RESOURCE_ENERGY] > 400))
+                || (i.structureType == STRUCTURE_TERMINAL
+                    && i.store[RESOURCE_ENERGY] < terminalEnergy)))[0];
+        if (target == undefined) {
+            return false;
+        }
+        if (creep.store[RESOURCE_ENERGY] == 0) {
+            if (creep.store.getFreeCapacity() == 0) {
+                let type = Object.keys(creep.store)[0];
+                creep.transfer(room.storage, type);
+                return true;
+            }
+            this.withdrawEnergy(creep, room);
+            return true;
+        }
+        if (target.structureType == STRUCTURE_LINK) {
+            let amount = Math.min(400 - target.store[RESOURCE_ENERGY], creep.store[RESOURCE_ENERGY]);
+            creep.transfer(target, RESOURCE_ENERGY, amount);
+            return true;
+        }
+        creep.transfer(target, RESOURCE_ENERGY);
+        return true;
+    },
+    withdrawResource: function (creep, room, terminal) {
+        let resource = Object.keys(terminal.store).find(i => !Memory.rooms[room.name].terminalTask.hasOwnProperty(i)
+            || Memory.rooms[room.name].terminalTask.hasOwnProperty(i)
+                && Memory.rooms[room.name].terminalTask[i]
+                    < terminal.store[i]);
+        if (resource != undefined) {
+            let amount = creep.store.getFreeCapacity();
+            if (Memory.rooms[room.name].terminalTask[resource] != undefined) {
+                amount = Math.min(terminal.store[resource]
+                    - Memory.rooms[room.name].terminalTask[resource], amount);
+            }
+            else {
+                amount = amount > terminal.store[resource]
+                    ? terminal.store[resource] : amount;
+            }
+            creep.withdraw(terminal, resource, amount);
+            return;
+        }
+        resource = Object.keys(room.storage.store).find(i => Memory.rooms[room.name].terminalTask.hasOwnProperty(i)
+            && Memory.rooms[room.name].terminalTask[i]
+                > terminal.store[i]);
+        if (resource != undefined) {
+            let amount = creep.store.getFreeCapacity();
+            if (Memory.rooms[room.name].terminalTask[resource] != undefined) {
+                amount = Math.min(Memory.rooms[room.name].terminalTask[resource]
+                    - terminal.store[resource], amount);
+            }
+            creep.withdraw(room.storage, resource, amount);
+            return;
         }
         return;
     },
+    transferResource: function (creep, room, terminal) {
+        let resource = Object.keys(creep.store)[0];
+        let amount = creep.store[resource];
+        if (Memory.rooms[room.name].terminalTask[resource] != undefined) {
+            let del = Memory.rooms[room.name].terminalTask[resource]
+                - terminal.store[resource];
+            if (del > 0) {
+                amount = amount - del > 0 ? del : amount;
+                creep.transfer(terminal, resource, amount);
+                return;
+            }
+        }
+        creep.transfer(room.storage, resource);
+        return;
+    },
+};
+
+const links = function (room) {
+    const run = function () {
+        let links = _.filter(room.find(FIND_STRUCTURES), i => i.structureType == "link");
+        let sourceLinks = _.filter(links, i => i.pos.findInRange(room.find(FIND_SOURCES), 2).length != 0);
+        if (sourceLinks.length == 0) {
+            return;
+        }
+        let upgradeLink = _.find(links, i => i.pos.getRangeTo(room.controller) <= 3);
+        let centerLink = _.find(links, i => i.pos.getRangeTo(room.find(FIND_MY_SPAWNS)[0]) == 1);
+        for (let i = 0; i < sourceLinks.length; ++i) {
+            if (sourceLinks[i].store[RESOURCE_ENERGY] < 400) {
+                continue;
+            }
+            if (upgradeLink && upgradeLink.store[RESOURCE_ENERGY] < 400) {
+                sourceLinks[i].transferEnergy(upgradeLink);
+            }
+            else if (centerLink) {
+                sourceLinks[i].transferEnergy(centerLink);
+            }
+        }
+        if (centerLink && centerLink.store[RESOURCE_ENERGY] >= 400) {
+            if (upgradeLink && upgradeLink.store[RESOURCE_ENERGY] < 400) {
+                centerLink.transferEnergy(upgradeLink);
+            }
+        }
+        return;
+    };
+    run();
+};
+
+const towers = function (room) {
+    const run = function () {
+        let towers = _.filter(room.find(FIND_STRUCTURES), (i) => i.structureType == "tower");
+        if (attack(towers)) {
+            return;
+        }
+        for (let i = 0; i < towers.length; ++i) {
+            if (!heal(towers[i])) {
+                repair(towers[i], i);
+            }
+        }
+        return;
+    };
+    const attack = function (towers) {
+        let enemy = room.find(FIND_HOSTILE_CREEPS);
+        if (enemy[0] == undefined) {
+            return false;
+        }
+        for (let i = 0; i < towers.length; ++i) {
+            towers[i].attack(enemy[0]);
+        }
+        return true;
+    };
+    const heal = function (tower) {
+        let creep = _.find(room.find(FIND_MY_CREEPS), i => i.hits < i.hitsMax);
+        if (creep == undefined) {
+            return false;
+        }
+        tower.heal(creep);
+        return true;
+    };
+    const repair = function (tower, index) {
+        let targets = _.filter(room.find(FIND_STRUCTURES), i => i.hits < i.hitsMax
+            && i.structureType != STRUCTURE_WALL
+            && i.structureType != STRUCTURE_RAMPART
+            || (i.structureType == STRUCTURE_RAMPART && i.hits < 1000));
+        targets.sort((a, b) => a.hits - b.hits);
+        tower.repair(targets[index]);
+        return;
+    };
+    run();
+};
+
+const terminal = function (room) {
+    const autoBuy = function () {
+        if (!room.terminal) {
+            return;
+        }
+        if (Game.time % 10 != 0) {
+            return;
+        }
+        let storageTask = Memory.rooms[room.name].storageTask;
+        let resources = Object.keys(storageTask);
+        let storage = room.storage;
+        for (let i = 0; i < resources.length; ++i) {
+            let terminalResource = room.terminal.store[resources[i]]
+                - Memory.rooms[room.name].terminalTask[resources[i]];
+            let storageResource = storage.store[resources[i]];
+            let del = storageTask[resources[i]] - terminalResource
+                - storageResource;
+            if (del <= 0) {
+                continue;
+            }
+            let orders = Game.market.getAllOrders({
+                type: ORDER_BUY,
+                resourceType: resources[i],
+            });
+            orders.sort((a, b) => b.price - a.price);
+            if (orders[0] == undefined) {
+                continue;
+            }
+            if (orders[0].roomName && orders[0].roomName in Game.rooms) {
+                return false;
+            }
+            let price = orders[0].price + 0.1;
+            let yesterdayOrders = Game.market.getHistory(resources[i])[Game.market.getHistory(resources[i]).length - 1];
+            if (price > yesterdayOrders.avgPrice + yesterdayOrders.stddevPrice) {
+                return;
+            }
+            let order = Object.keys(Game.market.orders).find(key => Game.market.orders[key].resourceType == resources[i]
+                && Game.market.orders[key].type == ORDER_BUY
+                && Game.market.orders[key].roomName == room.name);
+            if (order != undefined) {
+                Game.market.changeOrderPrice(order, price);
+                let remainingAmount = Game.market.orders[order].remainingAmount;
+                Game.market.extendOrder(order, del - remainingAmount);
+                return;
+            }
+            Game.market.createOrder({
+                type: ORDER_BUY,
+                resourceType: resources[i],
+                roomName: room.name,
+                price: price,
+                totalAmount: del,
+            });
+            return;
+        }
+        return;
+    };
+    const autoSell = function () {
+        if (!room.terminal) {
+            return;
+        }
+        if (Game.time % 1000 != 0) {
+            return;
+        }
+        let autoSell = Memory.rooms[room.name].autoSell;
+        let terminal = room.terminal;
+        let storage = room.storage;
+        let resource = _.find(Object.keys(autoSell), (i) => terminal.store[i] >= autoSell[i]
+            && storage.store[i] * 2 >= autoSell[i]);
+        if (!resource) {
+            return;
+        }
+        let orders = Game.market.getAllOrders({
+            type: ORDER_SELL,
+            resourceType: resource,
+        });
+        orders.sort((a, b) => a.price - b.price);
+        if (orders[0].roomName && orders[0].roomName in Game.rooms) {
+            return;
+        }
+        let price = orders[0].price - 0.1;
+        let yesterdayOrders = Game.market.getHistory(resource)[Game.market.getHistory(resource).length - 1];
+        if (price < yesterdayOrders.avgPrice - yesterdayOrders.stddevPrice) {
+            return;
+        }
+        let order = Object.keys(Game.market.orders).find(i => Game.market.orders[i].resourceType == resource
+            && Game.market.orders[i].type == ORDER_SELL
+            && Game.market.orders[i].roomName == room.name);
+        if (order != undefined) {
+            Game.market.changeOrderPrice(order, price);
+            let remainingAmount = Game.market.orders[order].remainingAmount;
+            Game.market.extendOrder(order, autoSell[resource] - remainingAmount);
+            return;
+        }
+        Game.market.createOrder({
+            type: ORDER_SELL,
+            resourceType: resource,
+            roomName: room.name,
+            price: price,
+            totalAmount: autoSell[resource],
+        });
+        return;
+    };
+    autoBuy();
+    autoSell();
+    return;
+};
+
+const labs = function (room) {
+    const run = function () {
+        let labId = Memory.rooms[room.name].labId;
+        let substrateLabs = labId.substrateLabs.map(i => Game.getObjectById(i));
+        if (substrateLabs.length < 2) {
+            return;
+        }
+        let reactionLabs = labId.reactionLabs.map(i => Game.getObjectById(i));
+        if (reactionLabs.length < 1) {
+            return;
+        }
+        for (let i = 0; i < reactionLabs.length; ++i) {
+            let res = reactionLabs[i].runReaction(substrateLabs[0], substrateLabs[1]);
+            if (res == 0) {
+                Memory.rooms[room.name].labTask.amount -= 5;
+            }
+        }
+        return;
+    };
+    run();
 };
 
 const RoomMaintain = {
@@ -2016,9 +2354,9 @@ const RoomMaintain = {
                 return;
             }
             RoomVisual.run(roomName);
-            let costs = this.roomCallBack(room);
+            this.roomCallBack(room);
             harvest.run(room);
-            Transfer.run(room, costs);
+            transferTask(room);
             build.run(room);
             if (room.find(FIND_CONSTRUCTION_SITES).length == 0) {
                 Upgrade.run(room, 3);
@@ -2026,8 +2364,12 @@ const RoomMaintain = {
             else {
                 Upgrade.run(room);
             }
-            Repair.run(room);
+            repair(room);
             Defend.run(room);
+            links(room);
+            towers(room);
+            labs(room);
+            terminal(room);
         }
     },
     roomCallBack: function (room) {
